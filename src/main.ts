@@ -10,10 +10,6 @@ import { Expression, ExpressionKind } from "./expression";
 
 const grammar = ne.Grammar.fromCompiled(require("./grammar/index"));
 
-function hash(value: Value): string {
-  return ""+Math.random();
-}
-
 export class State {
   public readonly parent?: State;
   private readonly defs: Record<string, Value | undefined>;
@@ -180,6 +176,12 @@ export function resolve(expr: Expression, state: State): Value {
         throw new DashError("not numbers");
 
       return {type: Type.Number, value: lhs.value/rhs.value};
+      break }
+
+    case ExpressionKind.Equal: {
+      const lhs = resolve(expr["lhs"], state);
+      const rhs = resolve(expr["rhs"], state);
+      return {type: Type.Number, value: lhs.value===rhs.value ? 1 : 0};
       break }
 
     case ExpressionKind.Exponential: {
