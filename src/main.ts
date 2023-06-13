@@ -23,6 +23,14 @@ export class State {
     this.defs = { };
   }
 
+  /** Clones this state. Used for closures.
+   * */
+  public clone(): State {
+    const clone = new State(this);
+    Object.assign(clone.defs, this.defs);
+    return clone;
+  }
+
   public declare(identifier: string, value: Value): Value | never {
     if (identifier in this.defs)
       throw new DashError("already defined " + identifier);
@@ -185,18 +193,18 @@ export function resolve(expr: Expression, state: State): Value {
       if (! (target.type & Type.Function))
         throw new DashError("target is not a function");
 
+      const subState = (target["context"] ??= state).push();
       const params: any[] = target.params;
-      const args: Value[] = expr["args"].map(x => resolve(x, state));
+      const args: Value[] = expr["args"].map(x => resolve(x, subState));
       if (params.length !== args.length)
         throw new DashError(`expected ${params.length} args, received ${args.length}`);
 
-      const subState = state.push();
       for (let i = 0; i < params.length; i++)
         subState.declare(params[i].name, args[i]);
       let res;
 
       if (target.native)
-        return target.native(...expr["args"].map(x => resolve(x, state)));
+        return target.native(...expr["args"].map(x => resolve(x, subState)));
 
       for (const x of (target["body"] as Expression[]))
         res = resolve(x, subState);
@@ -218,6 +226,7 @@ export function resolve(expr: Expression, state: State): Value {
       break }
 
     case ExpressionKind.Function:
+      expr["context"] = state.push();
     case ExpressionKind.Number:
     case ExpressionKind.String:
       return expr as any; // TODO: We know its compat, but need to make clearer.
@@ -319,7 +328,7 @@ async function main() {
     const res: any = ast[ast.length - 1];
     console.log(res?.value
         ? `= ${chalk.yellow(res.value)} (${typeof res.value})`
-        : "<expr>");
+        : (console.log((res)), " ")+"<expr> ");
   } catch (ex) {
     throw ex;
   }
@@ -327,4 +336,3 @@ async function main() {
 
 if (module === require.main)
   main().catch(ex => console.error(ex));
-performance.now()
