@@ -1,5 +1,5 @@
 build/
 docs/
 node_modules/
-./ast.json
-./src/grammar/index.ts
+ast.json
+src/grammar/**/*.ts
