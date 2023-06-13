@@ -235,7 +235,7 @@ export function resolve(expr: Expression, state: State): Value {
   throw new Error(expr.kind + " is an unresolvable expr kind");
 }
 
-function _import_(filepath: string, state: State): Value | never {
+function _dofile_(filepath: string, state: State): Value | never {
   const source = fs.readFileSync(filepath, "utf8");
   const parser = new ne.Parser(grammar);
 
@@ -262,6 +262,28 @@ function _import_(filepath: string, state: State): Value | never {
   } catch (ex) {
     throw ex;
   }
+}
+
+const nss = { "dash": path.join(__dirname, "..", "stdlib") };
+function _import_(name: string, state: State): Value | never {
+  if (! name.endsWith(".dash"))
+    name += ".dash";
+
+  if (path.isAbsolute(name))
+    return _dofile_(name, state);
+
+  if (name[0] === ".")
+    return _import_(path.join(process.cwd(), name), state);
+
+  if (name.indexOf(":") >= 0) {
+    const ns = name.substring(0, name.indexOf(":"));
+    const pathPart = name.substring(ns.length + 1);
+    if (ns in nss)
+      return _import_(path.join(nss[ns], pathPart), state);
+    throw new DashError("unknown import namespace " + ns);
+  }
+
+  throw new DashError("unknown import path " + name);
 }
 
 async function main() {
@@ -309,7 +331,6 @@ async function main() {
         return arg0;
       }
     });
-    await _import_(path.join(__dirname, "global.dash"), state);
 
     const var_args = {
       type: Type.Any,
@@ -326,7 +347,7 @@ async function main() {
     }
 
     const res: any = ast[ast.length - 1];
-    console.log(res?.value
+    console.log(("value" in res)
         ? `= ${chalk.yellow(res.value)} (${typeof res.value})`
         : (console.log((res)), " ")+"<expr> ");
   } catch (ex) {

@@ -7,7 +7,7 @@
   },
   "scripts": {
     "build": "gulp build",
-    "script": "gulp build-grammar && ts-node ./src/main.ts -f ./examples/closure.dash",
+    "script": "gulp build-grammar && ts-node ./src/main.ts -f ./script.dash",
     "start": "node build/main.js",
     "test": "ava --config \"./ava.config.js\""
   },

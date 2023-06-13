@@ -1,3 +1,4 @@
-math ::= import("./src/math.dash");
+import("dash:math");
 
-print(PI ** 2 + E)
+print(pow(PI, E));
+0
