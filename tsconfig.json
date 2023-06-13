@@ -1,0 +1,26 @@
+{
+  "compilerOptions": {
+    "moduleResolution": "Node",
+    "module": "CommonJS",
+    "target": "ES2022",
+
+    "allowJs": true,
+    "esModuleInterop": true,
+    "experimentalDecorators": true,
+    "resolveJsonModule": true,
+    "declaration": true,
+    "importHelpers": true,
+
+    // "strict": true,
+    "strictNullChecks": true,
+    "noImplicitOverride": true
+  },
+  "include": [
+    "src/**/*.js",
+    "src/**/*.json",
+    "src/**/*.ts"
+  ],
+  "exclude": [
+    "src/grammar/index.ts"
+  ]
+}

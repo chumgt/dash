@@ -1,0 +1,74 @@
+[
+  {
+    "kind": "FunctionCall",
+    "lhs": {
+      "kind": "Assignment",
+      "lhs": {
+        "kind": "Identifier",
+        "value": "math"
+      },
+      "rhs": {
+        "kind": "Identifier",
+        "value": "import"
+      },
+      "declaration": true,
+      "constant": true
+    },
+    "args": [
+      {
+        "kind": "String",
+        "constant": true,
+        "type": 2,
+        "value": "./src/math.dash",
+        "source": {
+          "type": "string",
+          "value": "./src/math.dash",
+          "text": "\"./src/math.dash\"",
+          "offset": 16,
+          "lineBreaks": 0,
+          "line": 1,
+          "col": 17
+        }
+      }
+    ]
+  },
+  {
+    "kind": "FunctionCall",
+    "lhs": {
+      "kind": "Identifier",
+      "value": "print"
+    },
+    "args": [
+      {
+        "lhs": {
+          "lhs": {
+            "kind": "Identifier",
+            "value": "PI"
+          },
+          "rhs": {
+            "kind": "Number",
+            "constant": true,
+            "format": "base10",
+            "type": 1,
+            "value": 2,
+            "source": {
+              "type": "base10",
+              "value": 2,
+              "text": "2",
+              "offset": 49,
+              "lineBreaks": 0,
+              "line": 3,
+              "col": 13
+            }
+          },
+          "kind": "Exponential"
+        },
+        "rhs": {
+          "kind": "Identifier",
+          "value": "E"
+        },
+        "kind": "Add"
+      }
+    ]
+  }
+]
