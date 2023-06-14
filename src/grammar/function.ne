@@ -32,12 +32,8 @@ ArgList ->
       } %}
 
 ParamList ->
-  Param
-      {% (d) => [d[0]] %}
-  | ParamList _ %comma _ Param
-      {% (d) => {
-        return [...d[0], d[4]];
-      } %}
+  Param  {% (d) => [d[0]] %}
+  | ParamList _ %comma _ Param  {% (d) => [...d[0], d[4]] %}
 
 Param ->
   Identifier (_ %colon _ TypeName):? {% (d) => ({

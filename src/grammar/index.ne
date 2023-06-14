@@ -76,8 +76,8 @@
     //geq: ">=",
     lt: "<",
     //leq: ">=",
-    and: "&&",
-    or: "||",
+    and: "&",
+    or: "|",
 
     lbracket: "[",
     rbracket: "]",
@@ -104,25 +104,22 @@
 
 Chunk ->
   _ Expr _
-      {% (d) => [d[1]] %}
+    {% (d) => [d[1]] %}
   | Chunk _ %semi _ Expr _
       {% (d) => [...d[0], d[4]] %}
 
-Parend[X] ->
-  %lparen _ $X _ %rparen
-      {% dn(2) %}
-
 Expr ->
-  (ArithmeticExpr | AssignExpr | BinaryExpr | CallExpr | DeclareExpr | ValueExpr)
-      {% dn(0, 0) %}
-  | Parend[Expr]
-      {% dn(0) %}
+  AssignExpr {% id %}
+  | ArithmeticExpr {%id%}
+  | ComparativeExpr {%id%}
+  | ConcatExpr {%id%}
+  | LogicalExpr  {%id%}
+  | ValueExpr {%id%}
 
-# CondExpr ->
-#   (BinaryExpr | Identifier)
-#       {% dn(0, 0) %}
-#   | Parend[CondExpr]
-#       {% id %}
+BinaryExpr ->
+  ArithmeticExpr {% id %}
+  | EqualityOp {% id %}
+  | LogicalExpr {% id %}
 
 DerefExpr ->
   Expr %dot Identifier {%
@@ -140,33 +137,26 @@ DerefExpr ->
     })
   %}
 
-# IfExpr ->
-#   Expr __ %kw_if __ CondExpr (__ %kw_else __ Expr):?
-#       {% (d) => ({
-#         "kind": ExpressionKind.If,
-#         "condition": d[4],
-#         "ifTrue": d[0],
-#         "ifFalse": d[5]
-#       }) %}
-
 Identifier ->
   %identifier {% (d) => ({
-      "kind": ExpressionKind.Identifier,
-      "value": d[0].value
-    }) %}
+    "kind": ExpressionKind.Identifier,
+    "value": d[0].value
+  }) %}
 
 String ->
-  %string {% (d) => {
-    return ({
-      "kind": ExpressionKind.String,
-      "constant": true,
-      "type": Type.String,
-      "value": d[0].value,
-      "source": d[0]
-    });
-  } %}
+  %string {% (d) => ({
+    "kind": ExpressionKind.String,
+    "constant": true,
+    "type": Type.String,
+    "value": d[0].value,
+    "source": d[0]
+  }) %}
 
 ValueExpr ->
+  (CallExpr | DerefExpr | ValueLiteral)
+    {% dn(0, 0) %}
+
+ValueLiteral ->
   (Function | Identifier | Number | String)
     {% dn(0, 0) %}
 
@@ -174,4 +164,5 @@ ValueExpr ->
 @include "src/grammar/arithmetic.ne"
 @include "src/grammar/assignment.ne"
 @include "src/grammar/function.ne"
+@include "src/grammar/logic.ne"
 @include "src/grammar/operator.ne"

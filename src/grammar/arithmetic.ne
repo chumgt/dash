@@ -3,20 +3,17 @@
 #
 
 @{%
-  function newArithmeticExprToken(kind: ExpressionKind) {
-    return function (d) {
-      const token = ({
-        "lhs": d[0],
-        "rhs": d[4],
-        kind
-      });
+  function newArithmeticExprToken(kind: ExpressionKind, lhs, rhs) {
+    const token = ({
+      lhs, rhs, kind
+    });
 
-       if (token.lhs.type===Type.Number && token.rhs.type===Type.Number) {
-         return doArithmeticTokenExpression(token);
-       }
+    if (token.lhs.constant && token.rhs.constant &&
+        token.lhs.type === Type.Number && token.rhs.type === Type.Number) {
+      return doArithmeticTokenExpression(token);
+    }
 
-      return token;
-    };
+    return token;
   }
 
   function doArithmeticTokenExpression(token): any {
@@ -54,32 +51,32 @@
 
 ArithmeticExpr ->
   AdditiveExpr
-      {% id %}
+    {% id %}
 
-ParenArithmeticExpr ->
-  %lparen _ AdditiveExpr _ %rparen
-      {% dn(2) %}
+AtomicArithmeticExpr ->
+  %lparen _ ArithmeticExpr _ %rparen
+    {% dn(2) %}
   | ValueExpr
-      {% dn(0) %}
+    {% id %}
 
 ExponentialExpr ->
-  ParenArithmeticExpr _ %power _ ExponentialExpr
-      {% newArithmeticExprToken(ExpressionKind.Exponential) %}
-  | ParenArithmeticExpr
-      {% id %}
+  AtomicArithmeticExpr _ %power _ ExponentialExpr
+    {% (d) => newArithmeticExprToken(ExpressionKind.Exponential, d[0], d[4]) %}
+  | AtomicArithmeticExpr
+    {% id %}
 
 MultiplicativeExpr ->
   MultiplicativeExpr _ %divide _ ExponentialExpr
-      {% newArithmeticExprToken(ExpressionKind.Divide) %}
+    {% (d) => newArithmeticExprToken(ExpressionKind.Divide, d[0], d[4]) %}
   | MultiplicativeExpr _ %times _ ExponentialExpr
-      {% newArithmeticExprToken(ExpressionKind.Multiply) %}
+    {% (d) => newArithmeticExprToken(ExpressionKind.Multiply, d[0], d[4]) %}
   | ExponentialExpr
-      {% id %}
+    {% id %}
 
 AdditiveExpr ->
   AdditiveExpr _ %plus _ MultiplicativeExpr
-      {% newArithmeticExprToken(ExpressionKind.Add) %}
+    {% (d) => newArithmeticExprToken(ExpressionKind.Add, d[0], d[4]) %}
   | AdditiveExpr _ %minus _ MultiplicativeExpr
-      {% newArithmeticExprToken(ExpressionKind.Subtract) %}
+    {% (d) => newArithmeticExprToken(ExpressionKind.Subtract, d[0], d[4]) %}
   | MultiplicativeExpr
-      {% id %}
+    {% id %}

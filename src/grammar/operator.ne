@@ -33,6 +33,13 @@
       case ExpressionKind.LEQ:
         value = token.lhs.value <= token.rhs.value;
         break;
+
+      case ExpressionKind.And:
+        value = token.lhs.value && token.rhs.value;
+        break;
+      case ExpressionKind.Or:
+        value = token.lhs.value || token.rhs.value;
+        break;
       default:
         throw new Error("Idk that op " + token.kind)
     }
@@ -46,30 +53,29 @@
 
 @lexer lex
 
-BinaryExpr ->
-  (OpConcat | LogicOp)
-    {% dn(0, 0) %}
+# OpConcat ->
+#   Expr _ %concat _ Expr
+#     {% (d) => newBinaryOpToken(ExpressionKind.Concat, d[0], d[4]) %}
 
-OpConcat ->
-  Expr _ %concat _ Expr
-    {% (d) => newBinaryOpToken(ExpressionKind.Concat, d[0], d[4]) %}
+ComparativeExpr ->
+  EqualityOp {% id %}
 
-Operand ->
-  %lparen _ Expr _ %rparen
+AtomicComparativeExpr ->
+  %lparen _ ComparativeExpr _ %rparen
     {% dn(2) %}
   | ValueExpr
     {% id %}
 
 RelationalOp ->
-  RelationalOp _ %gt _ Operand
+  RelationalOp _ %gt _ AtomicComparativeExpr
     {% (d) => newBinaryOpToken(ExpressionKind.GT, d[0], d[4]) %}
-  | RelationalOp _ %gt %eq _ Operand
+  | RelationalOp _ %gt %eq _ AtomicComparativeExpr
     {% (d) => newBinaryOpToken(ExpressionKind.GEQ, d[0], d[5]) %}
-  | RelationalOp _ %lt _ Operand
+  | RelationalOp _ %lt _ AtomicComparativeExpr
     {% (d) => newBinaryOpToken(ExpressionKind.LT, d[0], d[4]) %}
-  | RelationalOp _ %lt %eq _ Operand
+  | RelationalOp _ %lt %eq _ AtomicComparativeExpr
     {% (d) => newBinaryOpToken(ExpressionKind.LEQ, d[0], d[5]) %}
-  | Operand
+  | AtomicComparativeExpr
     {% id %}
 
 EqualityOp ->
@@ -78,12 +84,4 @@ EqualityOp ->
   | EqualityOp _ %neq _ RelationalOp
     {% (d) => newBinaryOpToken(ExpressionKind.NEQ, d[0], d[4]) %}
   | RelationalOp
-    {% id %}
-
-LogicOp ->
-  LogicOp _ %and _ EqualityOp
-    {% (d) => newBinaryOpToken(ExpressionKind.And, d[0], d[4]) %}
-  | LogicOp _ %or _ EqualityOp
-    {% (d) => newBinaryOpToken(ExpressionKind.Or, d[0], d[4]) %}
-  | EqualityOp
     {% id %}
