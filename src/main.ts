@@ -12,7 +12,7 @@ const grammar = ne.Grammar.fromCompiled(require("./grammar/index"));
 
 export class State {
   public readonly parent?: State;
-  private readonly defs: Record<string, Value | undefined>;
+  private readonly defs: Record<string, Value>;
 
   public constructor(parent?: State) {
     this.parent = parent;
@@ -33,6 +33,18 @@ export class State {
     return this.defs[identifier] = value;
   }
 
+  public assign(identifier: string, value: Value): Value {
+    const dec = this.getValue(identifier);
+    if (dec.constant)
+      throw new DashError("cannot assign to constant");
+    if (! (dec.type & value.type))
+      throw new DashError(`cannot assign ${value.type} to ${dec.type}`)
+
+    dec.properties = value.properties;
+    dec.value = value;
+    return value;
+  }
+
   public push(): State {
     const next = new State(this);
     return next;
@@ -44,7 +56,7 @@ export class State {
         || false;
   }
 
-  public setValue(identifier: string, value: Value): void {
+  public setValue(identifier: string, value: Value): never | void {
     if (identifier in this.defs)
       this.defs[identifier] = value;
     else if (this.parent)
@@ -53,7 +65,7 @@ export class State {
       throw new Error("not declared");
   }
 
-  public getValue(identifier: string): Value | undefined {
+  public getValue(identifier: string): Value | never {
     if (identifier in this.defs)
       return this.defs[identifier];
     else if (this.parent)
@@ -71,14 +83,15 @@ export interface Value extends Record<string, any> {
 }
 
 const pargs = yargs
-    .boolean("printast")
-      .default("printast", true)
+    .string("printast")
+      .choices("printast", ["all", "one"])
+      .default("printast", "one")
     .string("eval")
       .alias("eval", "e")
       .describe("eval", "The source (input) code")
     .string("file")
       .alias("file", "f")
-    .epilog(chalk.bgRedBright("Dash <3 you!"));
+    .epilog("Dash " + chalk.redBright("<3") + " you!");
 
 const args = pargs.parse(process.argv);
 
@@ -178,36 +191,33 @@ export function resolve(expr: Expression, state: State): Value {
       return {type: Type.Number, value: lhs.value/rhs.value};
       break }
 
-    case ExpressionKind.Equal: {
-      const lhs = resolve(expr["lhs"], state);
-      const rhs = resolve(expr["rhs"], state);
-      return {type: Type.Number, value: lhs.value===rhs.value ? 1 : 0};
-      break }
-
     case ExpressionKind.Exponential: {
       const lhs = resolve(expr["lhs"], state);
       const rhs = resolve(expr["rhs"], state);
       return {type: Type.Number, value: lhs.value!**rhs.value!}
       }
 
-    case ExpressionKind.FunctionCall: {
+    case ExpressionKind.Call: {
       const target = resolve(expr["lhs"], state);
       if (! (target.type & Type.Function))
         throw new DashError("target is not a function");
 
-      const subState = (target["context"] ??= state).push();
+      let subState = target["context"].push();
+      Object.assign(subState.defs, state["defs"]);
+      subState = subState.push();
       const params: any[] = target.params;
       const args: Value[] = expr["args"].map(x => resolve(x, subState));
       if (params.length !== args.length)
         throw new DashError(`expected ${params.length} args, received ${args.length}`);
 
-      for (let i = 0; i < params.length; i++)
+      for (let i = 0; i < params.length; i++) {
         subState.declare(params[i].name, args[i]);
-      let res;
+      }
 
       if (target.native)
         return target.native(...expr["args"].map(x => resolve(x, subState)));
 
+      let res;
       for (const x of (target["body"] as Expression[]))
         res = resolve(x, subState);
       return res }
@@ -226,6 +236,60 @@ export function resolve(expr: Expression, state: State): Value {
 
       return {type: Type.Number, value: lhs.value*rhs.value};
       break }
+
+    case ExpressionKind.EQ: {
+      const lhs = resolve(expr["lhs"], state);
+      const rhs = resolve(expr["rhs"], state);
+      return {type: Type.Number, value: lhs.value === rhs.value ? 1 : 0};
+      break }
+
+    case ExpressionKind.NEQ: {
+      const lhs = resolve(expr["lhs"], state);
+      const rhs = resolve(expr["rhs"], state);
+      return {type: Type.Number, value: lhs.value !== rhs.value ? 1 : 0};
+      break }
+
+    case ExpressionKind.GT: {
+      const lhs = resolve(expr["lhs"], state);
+      const rhs = resolve(expr["rhs"], state);
+      return {type: Type.Number, value: lhs.value > rhs.value ? 1 : 0};
+      break }
+
+    case ExpressionKind.GEQ: {
+      const lhs = resolve(expr["lhs"], state);
+      const rhs = resolve(expr["rhs"], state);
+      return {type: Type.Number, value: lhs.value >= rhs.value ? 1 : 0};
+      break }
+
+    case ExpressionKind.LT: {
+      const lhs = resolve(expr["lhs"], state);
+      const rhs = resolve(expr["rhs"], state);
+      return {type: Type.Number, value: lhs.value < rhs.value ? 1 : 0};
+      break }
+
+    case ExpressionKind.LEQ: {
+      const lhs = resolve(expr["lhs"], state);
+      const rhs = resolve(expr["rhs"], state);
+      return {type: Type.Number, value: lhs.value <= rhs.value ? 1 : 0};
+      break }
+
+    case ExpressionKind.And: {
+      const lhs = resolve(expr["lhs"], state);
+      const rhs = resolve(expr["rhs"], state);
+      return {type: Type.Number, value: (!!(lhs.value && rhs.value)) ? 1 : 0};
+      break }
+
+    case ExpressionKind.Or: {
+      const lhs = resolve(expr["lhs"], state);
+      const rhs = resolve(expr["rhs"], state);
+      return {type: Type.Number, value: (!!(lhs.value || rhs.value)) ? 1 : 0};
+      break }
+
+    case ExpressionKind.Subtract: {
+      const lhs = resolve(expr["lhs"], state);
+      const rhs = resolve(expr["rhs"], state);
+      return {type: Type.Number, value: lhs.value!-rhs.value!}
+      }
 
     case ExpressionKind.Function:
       expr["context"] = state.push();
@@ -298,6 +362,7 @@ async function main() {
   const source = args.eval ?? await afs.readFile(args.file!, "utf8");
   const parser = new ne.Parser(grammar);
 
+  let a = Date.now();
   try {
     parser.feed(source);
   } catch (ex: any) {
@@ -305,19 +370,27 @@ async function main() {
     return;
   }
 
-  const ast: any[] = parser.finish()[0];
+  let asts: any[] = parser.finish();
+  const ast = asts[0];
+
+  console.log(`Parsed in ${Date.now()-a}ms`);
+  if (asts.length > 1)
+    console.warn("Ambiguous ("+asts.length+" results)");
+
+  await afs.writeFile("./ast.json", JSON.stringify(
+      args.printast==="all" ? asts : ast, null, 2));
+
   if ((! Array.isArray(ast)) || ast.length === 0)
     throw new DashError("block is missing a return value");
-  if (ast.length > 1)
-    console.warn("Ambiguous ("+ast.length+" results)");
-
-  await afs.writeFile("./ast.json", JSON.stringify(ast, null, 2));
 
   try { // Now try running the script.
+    const a = Date.now();
     const state = new State();
+//#region Built-ins
     state.declare("import", {
       type: Type.Function,
       params: [{name:"filepath", type:Type.String}],
+      context: state,
       native(arg: Value) {
         // TODO: Don't allow importing same file more than once.
         if (! (arg.type&Type.String))
@@ -328,6 +401,7 @@ async function main() {
     state.declare("print", {
       type: Type.Function,
       params: [{name: "arg0", type:Type.String}],
+      context: state,
       native(arg0) {
         console.log(arg0.value);
         return arg0;
@@ -343,12 +417,14 @@ async function main() {
       var_args.properties[i] = {type: Type.String, value: x};
     });
     state.declare("args", var_args);
+//#endregion
 
     for (let i = 0; i < ast.length; i++) {
       ast[i] = resolve(ast[i], state);
     }
 
     const res: any = ast[ast.length - 1];
+    console.log(`Done in ${Date.now()-a}ms`);
     console.log(("value" in res)
         ? `= ${chalk.yellow(res.value)} (${typeof res.value})`
         : (console.log((res)), " ")+"<expr> ");
