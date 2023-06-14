@@ -6,9 +6,9 @@ LogicalExpr ->
     {% id %}
 
 LogicalAndExpr ->
-  LogicalAndExpr _ %and %and _ ValueExpr
+  LogicalAndExpr _ %and %and _ ComparativeExpr
     {% (d) => newBinaryOpToken(ExpressionKind.And, d[0], d[5]) %}
-  | ValueExpr
+  | ComparativeExpr
     {% id %}
 
 LogicalOrExpr ->

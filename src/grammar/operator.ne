@@ -53,23 +53,19 @@
 
 @lexer lex
 
-# OpConcat ->
-#   Expr _ %concat _ Expr
-#     {% (d) => newBinaryOpToken(ExpressionKind.Concat, d[0], d[4]) %}
-
 ComparativeExpr ->
   EqualityOp {% id %}
 
 RelationalOp ->
-  RelationalOp _ %gt _ ValueExpr
+  RelationalOp _ %gt _ ArithmeticExpr
     {% (d) => newBinaryOpToken(ExpressionKind.GT, d[0], d[4]) %}
-  | RelationalOp _ %gt %eq _ ValueExpr
+  | RelationalOp _ %gt %eq _ ArithmeticExpr
     {% (d) => newBinaryOpToken(ExpressionKind.GEQ, d[0], d[5]) %}
-  | RelationalOp _ %lt _ ValueExpr
+  | RelationalOp _ %lt _ ArithmeticExpr
     {% (d) => newBinaryOpToken(ExpressionKind.LT, d[0], d[4]) %}
-  | RelationalOp _ %lt %eq _ ValueExpr
+  | RelationalOp _ %lt %eq _ ArithmeticExpr
     {% (d) => newBinaryOpToken(ExpressionKind.LEQ, d[0], d[5]) %}
-  | ValueExpr
+  | ArithmeticExpr
     {% id %}
 
 EqualityOp ->

@@ -110,16 +110,10 @@ Chunk ->
 
 Expr ->
   AssignExpr {% id %}
-  | ArithmeticExpr {%id%}
-  | ComparativeExpr {%id%}
-  | ConcatExpr {%id%}
-  | LogicalExpr  {%id%}
-  | ValueExpr {%id%}
+  | BinaryExpr  {%id%}
 
 BinaryExpr ->
-  ArithmeticExpr {% id %}
-  | EqualityOp {% id %}
-  | LogicalExpr {% id %}
+  LogicalExpr {% id %}
 
 DerefExpr ->
   Expr %dot Identifier {%
