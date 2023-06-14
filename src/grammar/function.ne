@@ -2,7 +2,7 @@
 @lexer lex
 
 CallExpr ->
-  Expr _ %lparen _ ArgList:? _ %rparen
+  ValueExpr _ %lparen _ ArgList:? _ %rparen
     {% (d) => ({
       "kind": ExpressionKind.Call,
       "lhs": d[0],

@@ -121,10 +121,12 @@ export function resolve(expr: Expression, state: State): Value {
       }
       else if (expr["lhs"].kind === ExpressionKind.Dereference) {
         const target = resolve(expr["lhs"]["lhs"], state);
-        const key = resolve(expr["lhs"]["rhs"], state);
+        const key = expr["lhs"]["rhs"].kind === ExpressionKind.Identifier
+            ? expr["lhs"]["rhs"].value
+            : resolve(expr["lhs"]["rhs"], state);
         const value = resolve(expr["rhs"], state);
         target.properties ??= { };
-        target.properties[expr["lhs"]["rhs"].value] = value;
+        target.properties[key] = value;
         return value;
       }
       else {
@@ -150,6 +152,31 @@ export function resolve(expr: Expression, state: State): Value {
 
       return resolve(expr["lhs"], state)! }
 
+    case ExpressionKind.Call: {
+      const target = resolve(expr["lhs"], state);
+      if (! (target.type & Type.Function))
+        throw new DashError("target is not a function");
+
+      let subState = target["context"].push();
+      Object.assign(subState.defs, state["defs"]);
+      subState = subState.push();
+      const params: any[] = target.params;
+      const args: Value[] = expr["args"].map(x => resolve(x, subState));
+      if (params.length !== args.length)
+        throw new DashError(`expected ${params.length} args, received ${args.length}`);
+
+      for (let i = 0; i < params.length; i++)
+        subState.declare(params[i].name, args[i]);
+
+      if (target.native) {
+        return target.native(...expr["args"].map(x => resolve(x, subState)));
+      }
+
+      let res;
+      for (const x of (target["body"] as Expression[]))
+        res = resolve(x, subState);
+      return res }
+
     case ExpressionKind.Concat: {
       const lhs = resolve(expr["lhs"], state);
       const rhs = resolve(expr["rhs"], state);
@@ -168,11 +195,20 @@ export function resolve(expr: Expression, state: State): Value {
     case ExpressionKind.Dereference: {
       const lhs = resolve(expr["lhs"], state);
       // const rhs = resolve(expr["rhs"], state);
+      if (! lhs.properties)
+        throw new DashError("value is not indexable");
+
+      if (expr["rhs"].kind === ExpressionKind.Identifier) {
+        const id = expr["rhs"].value;
+        if (! (id in lhs.properties))
+          throw new DashError("id does not exist on object");
+
+        return lhs.properties[id];
+      }
+
       const rhs = resolve(expr["rhs"], state);
       if (! ("value" in rhs))
         throw new DashError("unknown deref rhs");
-      if (! lhs.properties)
-        throw new DashError("value is not indexable");
 
       if (lhs["properties"][rhs.value])
         return lhs["properties"][rhs.value];
@@ -197,36 +233,11 @@ export function resolve(expr: Expression, state: State): Value {
       return {type: Type.Number, value: lhs.value!**rhs.value!}
       }
 
-    case ExpressionKind.Call: {
-      const target = resolve(expr["lhs"], state);
-      if (! (target.type & Type.Function))
-        throw new DashError("target is not a function");
-
-      let subState = target["context"].push();
-      Object.assign(subState.defs, state["defs"]);
-      subState = subState.push();
-      const params: any[] = target.params;
-      const args: Value[] = expr["args"].map(x => resolve(x, subState));
-      if (params.length !== args.length)
-        throw new DashError(`expected ${params.length} args, received ${args.length}`);
-
-      for (let i = 0; i < params.length; i++) {
-        subState.declare(params[i].name, args[i]);
-      }
-
-      if (target.native)
-        return target.native(...expr["args"].map(x => resolve(x, subState)));
-
-      let res;
-      for (const x of (target["body"] as Expression[]))
-        res = resolve(x, subState);
-      return res }
-
     case ExpressionKind.Identifier:
       if (state.isDeclared(expr["value"])) {
         return state.getValue(expr["value"])!;
       }
-      throw new DashError("can't resolve " + expr["value"])
+      throw new DashError("can't resolve identifier " + expr["value"])
 
     case ExpressionKind.Multiply: {
       const lhs = resolve(expr["lhs"], state);
@@ -301,7 +312,7 @@ export function resolve(expr: Expression, state: State): Value {
   throw new Error(expr.kind + " is an unresolvable expr kind");
 }
 
-function _dofile_(filepath: string, state: State): Value | never {
+function _dofile_(filepath: string, state = new State()): Value | never {
   const source = fs.readFileSync(filepath, "utf8");
   const parser = new ne.Parser(grammar);
 
@@ -312,7 +323,45 @@ function _dofile_(filepath: string, state: State): Value | never {
     throw ex;
   }
 
-  const ast: any[] = parser.finish()[0];
+//#region Built-ins
+  state.declare("import", {
+    type: Type.Function,
+    params: [{name:"filepath", type:Type.String}],
+    context: state,
+    native(arg: Value) {
+      // TODO: Don't allow importing same file more than once.
+      if (! (arg.type&Type.String))
+        throw new DashError("expected a string");
+      return _import_(arg.value, state);
+    }
+  });
+  state.declare("print", {
+    type: Type.Function,
+    params: [{name: "arg0", type:Type.String}],
+    context: state,
+    native(arg0) {
+      console.log(arg0.value);
+      return arg0;
+    }
+  });
+
+  const var_args = {
+    type: Type.Any,
+    properties: {}
+  };
+  // Add command-line args to state
+  args._.slice(2).forEach((x, i) => {
+    var_args.properties[i] = {type: Type.String, value: x};
+  });
+  state.declare("args", var_args);
+//#endregion
+
+  const asts: any[] = parser.finish();
+  const ast = asts[0];
+
+  // await afs.writeFile("./ast.json", JSON.stringify(
+  //     args.printast==="all" ? asts : ast, null, 2));
+
   if ((! Array.isArray(ast)) || ast.length === 0)
     throw new DashError("block is missing a return value");
   if (ast.length > 1)
@@ -335,8 +384,16 @@ function _import_(name: string, state: State): Value | never {
   if (! name.endsWith(".dash"))
     name += ".dash";
 
-  if (path.isAbsolute(name))
-    return _dofile_(name, state);
+  if (path.isAbsolute(name)) {
+    const subState = new State();
+    const module: Value = {
+      type: Type.Any,
+      properties: { }
+    };
+    _dofile_(name, subState);
+    Object.assign(module.properties!, subState["defs"]);
+    return module;
+  }
 
   if (name[0] === ".")
     return _import_(path.join(process.cwd(), name), state);
@@ -370,60 +427,11 @@ async function main() {
     return;
   }
 
-  let asts: any[] = parser.finish();
-  const ast = asts[0];
-
-  console.log(`Parsed in ${Date.now()-a}ms`);
-  if (asts.length > 1)
-    console.warn("Ambiguous ("+asts.length+" results)");
-
-  await afs.writeFile("./ast.json", JSON.stringify(
-      args.printast==="all" ? asts : ast, null, 2));
-
-  if ((! Array.isArray(ast)) || ast.length === 0)
-    throw new DashError("block is missing a return value");
-
   try { // Now try running the script.
     const a = Date.now();
     const state = new State();
-//#region Built-ins
-    state.declare("import", {
-      type: Type.Function,
-      params: [{name:"filepath", type:Type.String}],
-      context: state,
-      native(arg: Value) {
-        // TODO: Don't allow importing same file more than once.
-        if (! (arg.type&Type.String))
-          throw new DashError("expected a string");
-        return _import_(arg.value, state); // TODO: `state` will be top-level *sigh*
-      }
-    });
-    state.declare("print", {
-      type: Type.Function,
-      params: [{name: "arg0", type:Type.String}],
-      context: state,
-      native(arg0) {
-        console.log(arg0.value);
-        return arg0;
-      }
-    });
 
-    const var_args = {
-      type: Type.Any,
-      properties: {}
-    };
-    // Add command-line args to state
-    args._.slice(2).forEach((x, i) => {
-      var_args.properties[i] = {type: Type.String, value: x};
-    });
-    state.declare("args", var_args);
-//#endregion
-
-    for (let i = 0; i < ast.length; i++) {
-      ast[i] = resolve(ast[i], state);
-    }
-
-    const res: any = ast[ast.length - 1];
+    const res = _dofile_(args.file!);
     console.log(`Done in ${Date.now()-a}ms`);
     console.log(("value" in res)
         ? `= ${chalk.yellow(res.value)} (${typeof res.value})`

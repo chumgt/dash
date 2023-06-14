@@ -59,7 +59,6 @@
     },
 
     comma: ",",
-    concat: "..",
     divide: "/",
     minus: "-",
     plus: "+",
@@ -68,14 +67,11 @@
     dot: ".",
     colon: ":",
     semi: ";",
-    eq: "=",
 
-    //equ: "==",
+    eq: "=",
     neq: "!=",
     gt: ">",
-    //geq: ">=",
     lt: "<",
-    //leq: ">=",
     and: "&",
     or: "|",
 
@@ -109,27 +105,13 @@ Chunk ->
       {% (d) => [...d[0], d[4]] %}
 
 Expr ->
-  AssignExpr {% id %}
-  | BinaryExpr  {%id%}
+  %lparen _ Expr _ %rparen {% dn(2) %}
+  | BinaryExpr {% id %}
+  | ValueExpr  {%id%}
 
 BinaryExpr ->
-  LogicalExpr {% id %}
-
-DerefExpr ->
-  Expr %dot Identifier {%
-    (d) => ({
-      "kind": ExpressionKind.Dereference,
-      "lhs": d[0],
-      "rhs": d[2]
-    })
-  %}
-  | Expr %lbracket Expr %rbracket {%
-    (d) => ({
-      "kind": ExpressionKind.Dereference,
-      "lhs": d[0],
-      "rhs": d[2]
-    })
-  %}
+  AssignExpr {% id %}
+  | LogicalExpr {% id %}
 
 Identifier ->
   %identifier {% (d) => ({
@@ -152,8 +134,18 @@ ValueExpr ->
   | (CallExpr | DerefExpr | ValueLiteral)
     {% dn(0, 0) %}
 
+DerefExpr ->
+  ValueExpr _ %dot Identifier
+    {% (d) => ({
+      "kind": ExpressionKind.Dereference,
+      "lhs": d[0],
+      "rhs": d[3]
+    }) %}
+  | Identifier
+    {% id %}
+
 ValueLiteral ->
-  (Function | Identifier | Number | String)
+  (Function | Number | String)
     {% dn(0, 0) %}
 
 @include "src/grammar/number.ne"

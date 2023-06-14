@@ -28,10 +28,7 @@ export enum ExpressionKind {
   Assignment = "Assignment",
   Dereference = "Dereference",
   Call = "Call",
-  TypeName = "TypeName",
-
-  Any = "__ANY__",
-  Experiment = "__EXPERIMENTAL__"
+  TypeName = "TypeName"
 }
 
 // export interface Expression {
