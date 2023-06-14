@@ -1,32 +1,44 @@
 @{%
-  function newBinaryOpToken(kind: ExpressionKind) {
-    return function (d) {
-      const token = ({
-        "lhs": d[0],
-        "rhs": d[5], // TODO THIS SHOULD NOT BE 5
-        kind
-      });
-
-      if (token.lhs.constant && token.rhs.constant)
-        return doBinaryOpToken(token);
-      return token;
-    };
+  function newBinaryOpToken(kind: ExpressionKind, lhs, rhs) {
+    const token = ({
+      lhs, rhs, kind
+    });
+    if (token.lhs.constant && token.rhs.constant)
+      return doBinaryOpToken(token);
+    return token;
   }
 
   function doBinaryOpToken(token): any {
     let value;
 
     switch (token.kind) {
-      case ExpressionKind.Equal:
+      case ExpressionKind.Concat:
+        value = String(token.lhs.value) + String(token.rhs.value);
+        break;
+      case ExpressionKind.EQ:
         value = token.lhs.value === token.rhs.value;
+        break;
+      case ExpressionKind.NEQ:
+        value = token.lhs.value !== token.rhs.value;
+        break;
+      case ExpressionKind.GT:
+        value = token.lhs.value > token.rhs.value;
+        break;
+      case ExpressionKind.GEQ:
+        value = token.lhs.value >= token.rhs.value;
+        break;
+      case ExpressionKind.LT:
+        value = token.lhs.value < token.rhs.value;
+        break;
+      case ExpressionKind.LEQ:
+        value = token.lhs.value <= token.rhs.value;
         break;
       default:
         throw new Error("Idk that op " + token.kind)
     }
 
     return ({
-      "kind": ExpressionKind.Any,
-      "constant": true,
+      ...token,
       value
     });
   }
@@ -35,64 +47,43 @@
 @lexer lex
 
 BinaryExpr ->
-  (OpConcat | OpEQ | OpLE | OpLT)
+  (OpConcat | LogicOp)
     {% dn(0, 0) %}
 
-BinaryOp[T] ->
-  Expr _ $T _ Expr {% (d) => ({
-    "lhs": d[0],
-    "rhs": d[4]
-  }) %}
-
 OpConcat ->
-  BinaryOp[%concat] {% (d) => {
-    if (d[0].lhs.constant && d[0].rhs.constant) {
-      return ({
-        "kind": ExpressionKind.String,
-        "value": String(d[0].lhs.value) + String(d[0].rhs.value)
-      });
-    }
-    return ({
-      "kind": ExpressionKind.Concat,
-      "lhs": d[0].lhs,
-      "rhs": d[0].rhs
-    });
-  } %}
-  # Expr _ %concat _ Expr {% (d) => {
-  #   if (d[0].constant && d[4].constant) {
-  #     return ({
-  #       "kind": ExpressionKind.String,
-  #       "source": d[0].source,
-  #       "constant": true,
-  #       "value": d[0].value + d[4].value
-  #     });
-  #   }
-  #   return ({
-  #     "kind": ExpressionKind.Concat,
-  #     "lhs": d[0],
-  #     "rhs": d[4]
-  #   })
-  # } %}
+  Expr _ %concat _ Expr
+    {% (d) => newBinaryOpToken(ExpressionKind.Concat, d[0], d[4]) %}
 
-OpEQ ->
-  Expr _ %equals %equals _ Expr
-    {% newBinaryOpToken(ExpressionKind.Equal) %}
-  # {% (d) => ({
-  #   "kind": ExpressionKind.Equal,
-  #   "lhs": d[0],
-  #   "rhs": d[4]
-  # }) %}
+Operand ->
+  %lparen _ Expr _ %rparen
+    {% dn(2) %}
+  | ValueExpr
+    {% id %}
 
-OpLE ->
-  Expr _ %leq _ Expr {% (d) => ({
-    "kind": ExpressionKind.LEQ,
-    "lhs": d[0],
-    "rhs": d[4]
-  }) %}
+RelationalOp ->
+  RelationalOp _ %gt _ Operand
+    {% (d) => newBinaryOpToken(ExpressionKind.GT, d[0], d[4]) %}
+  | RelationalOp _ %gt %eq _ Operand
+    {% (d) => newBinaryOpToken(ExpressionKind.GEQ, d[0], d[5]) %}
+  | RelationalOp _ %lt _ Operand
+    {% (d) => newBinaryOpToken(ExpressionKind.LT, d[0], d[4]) %}
+  | RelationalOp _ %lt %eq _ Operand
+    {% (d) => newBinaryOpToken(ExpressionKind.LEQ, d[0], d[5]) %}
+  | Operand
+    {% id %}
 
-OpLT ->
-  Expr _ %lt _ Expr {% (d) => ({
-    "kind": ExpressionKind.LessThan,
-    "lhs": d[0],
-    "rhs": d[4]
-  }) %}
+EqualityOp ->
+  EqualityOp _ %eq %eq _ RelationalOp
+    {% (d) => newBinaryOpToken(ExpressionKind.EQ, d[0], d[5]) %}
+  | EqualityOp _ %neq _ RelationalOp
+    {% (d) => newBinaryOpToken(ExpressionKind.NEQ, d[0], d[4]) %}
+  | RelationalOp
+    {% id %}
+
+LogicOp ->
+  LogicOp _ %and _ EqualityOp
+    {% (d) => newBinaryOpToken(ExpressionKind.And, d[0], d[4]) %}
+  | LogicOp _ %or _ EqualityOp
+    {% (d) => newBinaryOpToken(ExpressionKind.Or, d[0], d[4]) %}
+  | EqualityOp
+    {% id %}

@@ -61,7 +61,6 @@
     comma: ",",
     concat: "..",
     divide: "/",
-    equals: "=",
     minus: "-",
     plus: "+",
     power: "**",
@@ -69,11 +68,16 @@
     dot: ".",
     colon: ":",
     semi: ";",
+    eq: "=",
 
-    eq: "==",
+    //equ: "==",
     neq: "!=",
-    leq: "<=",
+    gt: ">",
+    //geq: ">=",
     lt: "<",
+    //leq: ">=",
+    and: "&&",
+    or: "||",
 
     lbracket: "[",
     rbracket: "]",
@@ -109,18 +113,16 @@ Parend[X] ->
       {% dn(2) %}
 
 Expr ->
-  (ArithmeticExpr | AssignExpr | DeclareExpr | IfExpr | ValueExpr)
+  (ArithmeticExpr | AssignExpr | BinaryExpr | CallExpr | DeclareExpr | ValueExpr)
       {% dn(0, 0) %}
-  | BinaryExpr
-      {% dn(0) %}
   | Parend[Expr]
-      {% dn(0, 0) %}
+      {% dn(0) %}
 
-CondExpr ->
-  (BinaryExpr | Identifier)
-      {% dn(0, 0) %}
-  | Parend[CondExpr]
-      {% id %}
+# CondExpr ->
+#   (BinaryExpr | Identifier)
+#       {% dn(0, 0) %}
+#   | Parend[CondExpr]
+#       {% id %}
 
 DerefExpr ->
   Expr %dot Identifier {%
@@ -138,14 +140,14 @@ DerefExpr ->
     })
   %}
 
-IfExpr ->
-  Expr __ %kw_if __ CondExpr (__ %kw_else __ Expr):?
-      {% (d) => ({
-        "kind": ExpressionKind.If,
-        "condition": d[4],
-        "ifTrue": d[0],
-        "ifFalse": d[5]
-      }) %}
+# IfExpr ->
+#   Expr __ %kw_if __ CondExpr (__ %kw_else __ Expr):?
+#       {% (d) => ({
+#         "kind": ExpressionKind.If,
+#         "condition": d[4],
+#         "ifTrue": d[0],
+#         "ifFalse": d[5]
+#       }) %}
 
 Identifier ->
   %identifier {% (d) => ({
@@ -165,7 +167,7 @@ String ->
   } %}
 
 ValueExpr ->
-  (DerefExpr | Function | FunctionCall | Identifier | Number | String)
+  (Function | Identifier | Number | String)
     {% dn(0, 0) %}
 
 @include "src/grammar/number.ne"

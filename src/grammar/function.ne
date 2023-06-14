@@ -1,21 +1,10 @@
 
 @lexer lex
 
-# FunctionCall ->
-#   Expr _ "|" (_ Expr):*
-#     {% (d) => ({
-#       "kind": ExpressionKind.Experimental,
-#       "lhs": d[0],
-#       "rhs": d[3]?.map(x => x[1])
-#     }) %}
-
-# FunctionDecl ->
-#   ParamList
-
-FunctionCall ->
+CallExpr ->
   Expr _ %lparen _ ArgList:? _ %rparen
     {% (d) => ({
-      "kind": ExpressionKind.FunctionCall,
+      "kind": ExpressionKind.Call,
       "lhs": d[0],
       "args": d[4] ?? []
     }) %}
@@ -30,10 +19,14 @@ Function ->
       "body": d[8]
     }) %}
 
-ArgList ->
+Arg ->
   Expr
+    {% id %}
+
+ArgList ->
+  Arg
       {% (d) => [d[0]] %}
-  | ArgList _ %comma _ Expr
+  | ArgList _ %comma _ Arg
       {% (d) => {
         return [...d[0], d[4]];
       } %}

@@ -2,6 +2,7 @@
 # Dash
 
 * Everything is an expression
+* Null-less. There is no null or equivalent
 * Closures
 
 ## Build
@@ -22,3 +23,6 @@ npm test
   For example, `5 + 2 * 8` will correctly produce `21`, but `x * f() + 5` may
   not, so try changing it to `(x * (f())) + (5)`. This is obviously a huge issue
   and is being worked on.
+
+* Error messages are not very helpful. The most common causes errors are
+  malformed scripts (invalid programs) and parsing errors (see previous point).
