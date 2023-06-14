@@ -53,16 +53,10 @@ ArithmeticExpr ->
   AdditiveExpr
     {% id %}
 
-AtomicArithmeticExpr ->
-  %lparen _ ArithmeticExpr _ %rparen
-    {% dn(2) %}
-  | ValueExpr
-    {% id %}
-
 ExponentialExpr ->
-  AtomicArithmeticExpr _ %power _ ExponentialExpr
+  ValueExpr _ %power _ ExponentialExpr
     {% (d) => newArithmeticExprToken(ExpressionKind.Exponential, d[0], d[4]) %}
-  | AtomicArithmeticExpr
+  | ValueExpr
     {% id %}
 
 MultiplicativeExpr ->

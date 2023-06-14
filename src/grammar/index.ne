@@ -153,7 +153,9 @@ String ->
   }) %}
 
 ValueExpr ->
-  (CallExpr | DerefExpr | ValueLiteral)
+  %lparen _ Expr _ %rparen
+    {% dn(2) %}
+  | (CallExpr | DerefExpr | ValueLiteral)
     {% dn(0, 0) %}
 
 ValueLiteral ->

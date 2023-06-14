@@ -5,16 +5,10 @@ LogicalExpr ->
   LogicalOrExpr
     {% id %}
 
-AtomicLogicalExpr ->
-  %lparen _ Expr _ %rparen
-    {% dn(2) %}
-  | ValueExpr
-    {% id %}
-
 LogicalAndExpr ->
-  LogicalAndExpr _ %and %and _ AtomicLogicalExpr
+  LogicalAndExpr _ %and %and _ ValueExpr
     {% (d) => newBinaryOpToken(ExpressionKind.And, d[0], d[5]) %}
-  | AtomicLogicalExpr
+  | ValueExpr
     {% id %}
 
 LogicalOrExpr ->

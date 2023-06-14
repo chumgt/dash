@@ -60,22 +60,16 @@
 ComparativeExpr ->
   EqualityOp {% id %}
 
-AtomicComparativeExpr ->
-  %lparen _ ComparativeExpr _ %rparen
-    {% dn(2) %}
-  | ValueExpr
-    {% id %}
-
 RelationalOp ->
-  RelationalOp _ %gt _ AtomicComparativeExpr
+  RelationalOp _ %gt _ ValueExpr
     {% (d) => newBinaryOpToken(ExpressionKind.GT, d[0], d[4]) %}
-  | RelationalOp _ %gt %eq _ AtomicComparativeExpr
+  | RelationalOp _ %gt %eq _ ValueExpr
     {% (d) => newBinaryOpToken(ExpressionKind.GEQ, d[0], d[5]) %}
-  | RelationalOp _ %lt _ AtomicComparativeExpr
+  | RelationalOp _ %lt _ ValueExpr
     {% (d) => newBinaryOpToken(ExpressionKind.LT, d[0], d[4]) %}
-  | RelationalOp _ %lt %eq _ AtomicComparativeExpr
+  | RelationalOp _ %lt %eq _ ValueExpr
     {% (d) => newBinaryOpToken(ExpressionKind.LEQ, d[0], d[5]) %}
-  | AtomicComparativeExpr
+  | ValueExpr
     {% id %}
 
 EqualityOp ->
