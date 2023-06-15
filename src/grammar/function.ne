@@ -2,12 +2,15 @@
 @lexer lex
 
 CallExpr ->
-  ValueExpr _ %lparen _ ArgList:? _ %rparen
+  CallTarget _ %lparen _ ArgList:? _ %rparen
     {% (d) => ({
       "kind": ExpressionKind.Call,
       "lhs": d[0],
       "args": d[4] ?? []
     }) %}
+
+CallTarget ->
+  ValueExpr {%id%}
 
 Function ->
   %lparen _ ParamList:? _ %rparen (_ %colon _ TypeName):? _ %lbrace Chunk %rbrace
@@ -19,17 +22,19 @@ Function ->
       "body": d[8]
     }) %}
 
+FunctionBody ->
+  _ Expr _
+    {% (d) => [d[1]] %}
+  | Chunk _ %semi _ Expr _
+      {% (d) => [...d[0], d[4]] %}
+
 Arg ->
-  Expr
+  ValueExpr
     {% id %}
 
 ArgList ->
-  Arg
-      {% (d) => [d[0]] %}
-  | ArgList _ %comma _ Arg
-      {% (d) => {
-        return [...d[0], d[4]];
-      } %}
+  Arg {% (d) => ([d[0]]) %}
+  | ArgList _ %comma _ Arg {% (d) => [...d[0], d[4]] %}
 
 ParamList ->
   Param  {% (d) => [d[0]] %}

@@ -29,7 +29,7 @@ AssignmentTarget ->
 #   } %}
 
 AssignExpr ->
-  AssignmentTarget _ (%colon %colon:? (_ TypeName _):?):? %eq _ ValueExpr {% (d) => {
+  AssignmentTarget _ (%colon %colon:? (_ TypeName _):?):? %eq _ Expr {% (d) => {
     const token: any = ({
       "kind": ExpressionKind.Assignment,
       "lhs": d[0],

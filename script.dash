@@ -1,3 +1,3 @@
-import("dash:math");
-
-is_infinite(∞)
+math ::= import("dash:math");
+io ::=  import("dash:io");
+io.write((math.random()))

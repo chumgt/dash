@@ -142,7 +142,6 @@ export function resolve(expr: Expression, state: State): Value {
               throw new DashError("incompatible types");
           }
 
-          // state.setValue(id, res);
           val.value = res;
           return res;
         } else {
@@ -303,7 +302,7 @@ export function resolve(expr: Expression, state: State): Value {
       }
 
     case ExpressionKind.Function:
-      expr["context"] = state.push();
+      expr["context"] = state;
     case ExpressionKind.Number:
     case ExpressionKind.String:
       return expr as any; // TODO: We know its compat, but need to make clearer.
@@ -312,7 +311,8 @@ export function resolve(expr: Expression, state: State): Value {
   throw new Error(expr.kind + " is an unresolvable expr kind");
 }
 
-function _dofile_(filepath: string, state = new State()): Value | never {
+let i = false;
+function _dofile_(filepath: string, state = new State()): {ast: any, val: Value | never} {
   const source = fs.readFileSync(filepath, "utf8");
   const parser = new ne.Parser(grammar);
 
@@ -324,6 +324,23 @@ function _dofile_(filepath: string, state = new State()): Value | never {
   }
 
 //#region Built-ins
+  state.declare("__native__", {
+    type: Type.Function,
+    params: [
+      {name:"filepath", type:Type.String},
+      {name:"key", type:Type.String}],
+    context: state,
+    native(filepathV: Value, keyV: Value) {
+      // TODO: This is a bit dodgy!
+      const module: any = require(filepathV.value);
+      const value: any = module[keyV.value];
+      if (! value)
+        throw new DashError("module does not export " + keyV.value);
+      if (! ("type" in value))
+        throw new DashError("incompatible native type");
+      return value;
+    }
+  });
   state.declare("import", {
     type: Type.Function,
     params: [{name:"filepath", type:Type.String}],
@@ -333,15 +350,6 @@ function _dofile_(filepath: string, state = new State()): Value | never {
       if (! (arg.type&Type.String))
         throw new DashError("expected a string");
       return _import_(arg.value, state);
-    }
-  });
-  state.declare("print", {
-    type: Type.Function,
-    params: [{name: "arg0", type:Type.String}],
-    context: state,
-    native(arg0) {
-      console.log(arg0.value);
-      return arg0;
     }
   });
 
@@ -359,24 +367,20 @@ function _dofile_(filepath: string, state = new State()): Value | never {
   const asts: any[] = parser.finish();
   const ast = asts[0];
 
-  // await afs.writeFile("./ast.json", JSON.stringify(
-  //     args.printast==="all" ? asts : ast, null, 2));
-
   if ((! Array.isArray(ast)) || ast.length === 0)
     throw new DashError("block is missing a return value");
   if (ast.length > 1)
-    console.warn("Ambiguous ("+ast.length+" results)");
+    console.warn(`Ambiguous (${ast.length} results)`);
 
-  try {
-    for (let i = 0; i < ast.length; i++) {
-      ast[i] = resolve(ast[i], state);
-    }
+  if ((!i) && (i=true))
+    fs.writeFileSync("./ast.json", JSON.stringify(ast,null,2))
 
-    const res: any = ast[ast.length - 1];
-    return res;
-  } catch (ex) {
-    throw ex;
+  for (let i = 0; i < ast.length; i++) {
+    ast[i] = resolve(ast[i], state);
   }
+
+  const res: Value = ast[ast.length - 1];
+  return {ast, val:res};
 }
 
 const nss = { "dash": path.join(__dirname, "..", "stdlib") };
@@ -430,8 +434,11 @@ async function main() {
   try { // Now try running the script.
     const a = Date.now();
     const state = new State();
+    (global as any).state = state;
 
-    const res = _dofile_(args.file!);
+    const ret = _dofile_(args.file!);
+    const res = ret.val;
+
     console.log(`Done in ${Date.now()-a}ms`);
     console.log(("value" in res)
         ? `= ${chalk.yellow(res.value)} (${typeof res.value})`

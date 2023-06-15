@@ -53,7 +53,7 @@
       value: (x) => Number.parseInt(x, 10) as any
     },
     string: {
-      match: /"(?:\\["\\ntbfr]|[^"\\])*"/,
+      match: /"(?:\\["bfnrt\/\\]|\\u[a-fA-F0-9]{4}|[^"])*"/,
       lineBreaks: true,
       value: (x) => x.substring(1, x.length - 1)
     },
@@ -91,12 +91,17 @@
   });
 %}
 
-# - Includes are relative to the *project* root and must come after the entry
-# point (`Chunk`).
+# - Includes are relative to the *project* root.
 
 @lexer lex
 @preprocessor typescript
 @builtin "whitespace.ne"
+@include "src/grammar/arithmetic.ne"
+@include "src/grammar/assignment.ne"
+@include "src/grammar/function.ne"
+@include "src/grammar/logic.ne"
+@include "src/grammar/number.ne"
+@include "src/grammar/operator.ne"
 
 Chunk ->
   _ Expr _
@@ -105,8 +110,7 @@ Chunk ->
       {% (d) => [...d[0], d[4]] %}
 
 Expr ->
-  %lparen _ Expr _ %rparen {% dn(2) %}
-  | BinaryExpr {% id %}
+  BinaryExpr {% id %}
   | ValueExpr  {%id%}
 
 BinaryExpr ->
@@ -124,15 +128,15 @@ String ->
     "kind": ExpressionKind.String,
     "constant": true,
     "type": Type.String,
-    "value": d[0].value,
+    "value": JSON.parse("\""+d[0].value+"\""), // TODO: This is overkill just to get ctrl chars
     "source": d[0]
   }) %}
 
 ValueExpr ->
-  %lparen _ Expr _ %rparen
-    {% dn(2) %}
-  | (CallExpr | DerefExpr | ValueLiteral)
+  (CallExpr | DerefExpr | ValueLiteral)
     {% dn(0, 0) %}
+  | %lparen _ Expr _ %rparen
+    {% dn(2) %}
 
 DerefExpr ->
   ValueExpr _ %dot Identifier
@@ -147,10 +151,3 @@ DerefExpr ->
 ValueLiteral ->
   (Function | Number | String)
     {% dn(0, 0) %}
-
-@include "src/grammar/number.ne"
-@include "src/grammar/arithmetic.ne"
-@include "src/grammar/assignment.ne"
-@include "src/grammar/function.ne"
-@include "src/grammar/logic.ne"
-@include "src/grammar/operator.ne"
