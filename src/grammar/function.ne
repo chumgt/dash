@@ -43,5 +43,5 @@ ParamList ->
 Param ->
   Identifier (_ %colon _ TypeName):? {% (d) => ({
     "name": d[0].value,
-    "type": d[1] ? getTypeByName(d[1][3]) : Type.Any
+    "type": d[1]?.[3] ?? Type.Any
   }) %}

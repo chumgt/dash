@@ -1,6 +1,6 @@
 const data = require("./../build/data");
 
-export const random = {
+module.exports.random = {
   type: data.Type.Function,
   context: global.state,
   params: [],
@@ -12,7 +12,7 @@ export const random = {
   }
 };
 
-export const write = {
+module.exports.write = {
   type: data.Type.Function,
   context: global.state,
   params: [
