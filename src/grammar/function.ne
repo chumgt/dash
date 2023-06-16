@@ -13,19 +13,19 @@ CallTarget ->
   ValueExpr {%id%}
 
 Function ->
-  %lparen _ ParamList:? _ %rparen (_ %colon _ TypeName):? _ %lbrace Chunk %rbrace
+  %lparen _ ParamList:? _ %rparen (_ %colon _ TypeName):? _ %lbrace FunctionBody %rbrace
     {% (d) => ({
       "kind": ExpressionKind.Function,
       "type": Type.Function,
       "params": d[2] ?? [],
-      "returnType": d[5] ? getTypeByName(d[5][3]) : Type.Any,
+      "returnType": d[5]?.[3] ?? Type.Any,
       "body": d[8]
     }) %}
 
 FunctionBody ->
   _ Expr _
     {% (d) => [d[1]] %}
-  | Chunk _ %semi _ Expr _
+  | FunctionBody _ %semi _ Expr _
       {% (d) => [...d[0], d[4]] %}
 
 Arg ->

@@ -104,10 +104,8 @@
 @include "src/grammar/operator.ne"
 
 Chunk ->
-  _ Expr _
-    {% (d) => [d[1]] %}
-  | Chunk _ %semi _ Expr _
-      {% (d) => [...d[0], d[4]] %}
+  FunctionBody
+    {% id %}
 
 Expr ->
   BinaryExpr {% id %}

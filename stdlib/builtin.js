@@ -1,6 +1,6 @@
 const data = require("./../build/data");
 
-export const rand = {
+export const random = {
   type: data.Type.Function,
   context: global.state,
   params: [],
