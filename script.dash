@@ -1,3 +1,0 @@
-math ::= import("dash:math");
-io ::=  import("dash:io");
-io.write((math.random()))
