@@ -53,15 +53,13 @@
       value: (x) => Number.parseInt(x, 10) as any
     },
     string: {
-      match: /"(?:\\["\\ntbfr]|[^"\\])*"/,
+      match: /"(?:\\["bfnrt\/\\]|\\u[a-fA-F0-9]{4}|[^"])*"/,
       lineBreaks: true,
       value: (x) => x.substring(1, x.length - 1)
     },
 
     comma: ",",
-    concat: "..",
     divide: "/",
-    equals: "=",
     minus: "-",
     plus: "+",
     power: "**",
@@ -70,10 +68,12 @@
     colon: ":",
     semi: ";",
 
-    eq: "==",
+    eq: "=",
     neq: "!=",
-    leq: "<=",
+    gt: ">",
     lt: "<",
+    and: "&",
+    or: "|",
 
     lbracket: "[",
     rbracket: "]",
@@ -91,85 +91,61 @@
   });
 %}
 
-# - Includes are relative to the *project* root and must come after the entry
-# point (`Chunk`).
+# - Includes are relative to the *project* root.
 
 @lexer lex
 @preprocessor typescript
 @builtin "whitespace.ne"
-
-Chunk ->
-  _ Expr _
-      {% (d) => [d[1]] %}
-  | Chunk _ %semi _ Expr _
-      {% (d) => [...d[0], d[4]] %}
-
-Parend[X] ->
-  %lparen _ $X _ %rparen
-      {% dn(2) %}
-
-Expr ->
-  (ArithmeticExpr | AssignExpr | DeclareExpr | IfExpr | ValueExpr)
-      {% dn(0, 0) %}
-  | BinaryExpr
-      {% dn(0) %}
-  | Parend[Expr]
-      {% dn(0, 0) %}
-
-CondExpr ->
-  (BinaryExpr | Identifier)
-      {% dn(0, 0) %}
-  | Parend[CondExpr]
-      {% id %}
-
-DerefExpr ->
-  Expr %dot Identifier {%
-    (d) => ({
-      "kind": ExpressionKind.Dereference,
-      "lhs": d[0],
-      "rhs": d[2]
-    })
-  %}
-  | Expr %lbracket Expr %rbracket {%
-    (d) => ({
-      "kind": ExpressionKind.Dereference,
-      "lhs": d[0],
-      "rhs": d[2]
-    })
-  %}
-
-IfExpr ->
-  Expr __ %kw_if __ CondExpr (__ %kw_else __ Expr):?
-      {% (d) => ({
-        "kind": ExpressionKind.If,
-        "condition": d[4],
-        "ifTrue": d[0],
-        "ifFalse": d[5]
-      }) %}
-
-Identifier ->
-  %identifier {% (d) => ({
-      "kind": ExpressionKind.Identifier,
-      "value": d[0].value
-    }) %}
-
-String ->
-  %string {% (d) => {
-    return ({
-      "kind": ExpressionKind.String,
-      "constant": true,
-      "type": Type.String,
-      "value": d[0].value,
-      "source": d[0]
-    });
-  } %}
-
-ValueExpr ->
-  (DerefExpr | Function | FunctionCall | Identifier | Number | String)
-    {% dn(0, 0) %}
-
-@include "src/grammar/number.ne"
 @include "src/grammar/arithmetic.ne"
 @include "src/grammar/assignment.ne"
 @include "src/grammar/function.ne"
+@include "src/grammar/logic.ne"
+@include "src/grammar/number.ne"
 @include "src/grammar/operator.ne"
+
+Chunk ->
+  FunctionBody
+    {% id %}
+
+Expr ->
+  BinaryExpr {% id %}
+  | ValueExpr  {%id%}
+
+BinaryExpr ->
+  AssignExpr {% id %}
+  | LogicalExpr {% id %}
+
+Identifier ->
+  %identifier {% (d) => ({
+    "kind": ExpressionKind.Identifier,
+    "value": d[0].value
+  }) %}
+
+String ->
+  %string {% (d) => ({
+    "kind": ExpressionKind.String,
+    "constant": true,
+    "type": Type.String,
+    "value": JSON.parse("\""+d[0].value+"\""), // TODO: This is overkill just to get ctrl chars
+    "source": d[0]
+  }) %}
+
+ValueExpr ->
+  (CallExpr | DerefExpr | ValueLiteral)
+    {% dn(0, 0) %}
+  | %lparen _ Expr _ %rparen
+    {% dn(2) %}
+
+DerefExpr ->
+  ValueExpr _ %dot Identifier
+    {% (d) => ({
+      "kind": ExpressionKind.Dereference,
+      "lhs": d[0],
+      "rhs": d[3]
+    }) %}
+  | Identifier
+    {% id %}
+
+ValueLiteral ->
+  (Function | Number | String)
+    {% dn(0, 0) %}

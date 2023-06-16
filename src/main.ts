@@ -10,23 +10,39 @@ import { Expression, ExpressionKind } from "./expression";
 
 const grammar = ne.Grammar.fromCompiled(require("./grammar/index"));
 
-function hash(value: Value): string {
-  return ""+Math.random();
-}
-
 export class State {
   public readonly parent?: State;
-  private readonly defs: Record<string, Value | undefined>;
+  private readonly defs: Record<string, Value>;
 
   public constructor(parent?: State) {
     this.parent = parent;
     this.defs = { };
   }
 
+  /** Clones this state. Used for closures.
+   * */
+  public clone(): State {
+    const clone = new State(this);
+    Object.assign(clone.defs, this.defs);
+    return clone;
+  }
+
   public declare(identifier: string, value: Value): Value | never {
     if (identifier in this.defs)
       throw new DashError("already defined " + identifier);
     return this.defs[identifier] = value;
+  }
+
+  public assign(identifier: string, value: Value): Value {
+    const dec = this.getValue(identifier);
+    if (dec.constant)
+      throw new DashError("cannot assign to constant");
+    if (! (dec.type & value.type))
+      throw new DashError(`cannot assign ${value.type} to ${dec.type}`)
+
+    dec.properties = value.properties;
+    dec.value = value;
+    return value;
   }
 
   public push(): State {
@@ -40,7 +56,7 @@ export class State {
         || false;
   }
 
-  public setValue(identifier: string, value: Value): void {
+  public setValue(identifier: string, value: Value): never | void {
     if (identifier in this.defs)
       this.defs[identifier] = value;
     else if (this.parent)
@@ -49,7 +65,7 @@ export class State {
       throw new Error("not declared");
   }
 
-  public getValue(identifier: string): Value | undefined {
+  public getValue(identifier: string): Value | never {
     if (identifier in this.defs)
       return this.defs[identifier];
     else if (this.parent)
@@ -67,14 +83,15 @@ export interface Value extends Record<string, any> {
 }
 
 const pargs = yargs
-    .boolean("printast")
-      .default("printast", true)
+    .string("printast")
+      .choices("printast", ["all", "one"])
+      .default("printast", "one")
     .string("eval")
       .alias("eval", "e")
       .describe("eval", "The source (input) code")
     .string("file")
       .alias("file", "f")
-    .epilog(chalk.bgRedBright("Dash <3 you!"));
+    .epilog("Dash " + chalk.redBright("<3") + " you!");
 
 const args = pargs.parse(process.argv);
 
@@ -104,10 +121,12 @@ export function resolve(expr: Expression, state: State): Value {
       }
       else if (expr["lhs"].kind === ExpressionKind.Dereference) {
         const target = resolve(expr["lhs"]["lhs"], state);
-        const key = resolve(expr["lhs"]["rhs"], state);
+        const key = expr["lhs"]["rhs"].kind === ExpressionKind.Identifier
+            ? expr["lhs"]["rhs"].value
+            : resolve(expr["lhs"]["rhs"], state);
         const value = resolve(expr["rhs"], state);
         target.properties ??= { };
-        target.properties[expr["lhs"]["rhs"].value] = value;
+        target.properties[key] = value;
         return value;
       }
       else {
@@ -123,7 +142,6 @@ export function resolve(expr: Expression, state: State): Value {
               throw new DashError("incompatible types");
           }
 
-          // state.setValue(id, res);
           val.value = res;
           return res;
         } else {
@@ -132,6 +150,31 @@ export function resolve(expr: Expression, state: State): Value {
       }
 
       return resolve(expr["lhs"], state)! }
+
+    case ExpressionKind.Call: {
+      const target = resolve(expr["lhs"], state);
+      if (! (target.type & Type.Function))
+        throw new DashError("target is not a function");
+
+      let subState = target["context"].push();
+      Object.assign(subState.defs, state["defs"]);
+      subState = subState.push();
+      const params: any[] = target.params;
+      const args: Value[] = expr["args"].map(x => resolve(x, subState));
+      if (params.length !== args.length)
+        throw new DashError(`expected ${params.length} args, received ${args.length}`);
+
+      for (let i = 0; i < params.length; i++)
+        subState.declare(params[i].name, args[i]);
+
+      if (target.native) {
+        return target.native(...expr["args"].map(x => resolve(x, subState)));
+      }
+
+      let res;
+      for (const x of (target["body"] as Expression[]))
+        res = resolve(x, subState);
+      return res }
 
     case ExpressionKind.Concat: {
       const lhs = resolve(expr["lhs"], state);
@@ -151,11 +194,20 @@ export function resolve(expr: Expression, state: State): Value {
     case ExpressionKind.Dereference: {
       const lhs = resolve(expr["lhs"], state);
       // const rhs = resolve(expr["rhs"], state);
+      if (! lhs.properties)
+        throw new DashError("value is not indexable");
+
+      if (expr["rhs"].kind === ExpressionKind.Identifier) {
+        const id = expr["rhs"].value;
+        if (! (id in lhs.properties))
+          throw new DashError("id does not exist on object");
+
+        return lhs.properties[id];
+      }
+
       const rhs = resolve(expr["rhs"], state);
       if (! ("value" in rhs))
         throw new DashError("unknown deref rhs");
-      if (! lhs.properties)
-        throw new DashError("value is not indexable");
 
       if (lhs["properties"][rhs.value])
         return lhs["properties"][rhs.value];
@@ -180,33 +232,11 @@ export function resolve(expr: Expression, state: State): Value {
       return {type: Type.Number, value: lhs.value!**rhs.value!}
       }
 
-    case ExpressionKind.FunctionCall: {
-      const target = resolve(expr["lhs"], state);
-      if (! (target.type & Type.Function))
-        throw new DashError("target is not a function");
-
-      const params: any[] = target.params;
-      const args: Value[] = expr["args"].map(x => resolve(x, state));
-      if (params.length !== args.length)
-        throw new DashError(`expected ${params.length} args, received ${args.length}`);
-
-      const subState = state.push();
-      for (let i = 0; i < params.length; i++)
-        subState.declare(params[i].name, args[i]);
-      let res;
-
-      if (target.native)
-        return target.native(...expr["args"].map(x => resolve(x, state)));
-
-      for (const x of (target["body"] as Expression[]))
-        res = resolve(x, subState);
-      return res }
-
     case ExpressionKind.Identifier:
       if (state.isDeclared(expr["value"])) {
         return state.getValue(expr["value"])!;
       }
-      throw new DashError("can't resolve " + expr["value"])
+      throw new DashError("can't resolve identifier " + expr["value"])
 
     case ExpressionKind.Multiply: {
       const lhs = resolve(expr["lhs"], state);
@@ -217,7 +247,62 @@ export function resolve(expr: Expression, state: State): Value {
       return {type: Type.Number, value: lhs.value*rhs.value};
       break }
 
+    case ExpressionKind.EQ: {
+      const lhs = resolve(expr["lhs"], state);
+      const rhs = resolve(expr["rhs"], state);
+      return {type: Type.Number, value: lhs.value === rhs.value ? 1 : 0};
+      break }
+
+    case ExpressionKind.NEQ: {
+      const lhs = resolve(expr["lhs"], state);
+      const rhs = resolve(expr["rhs"], state);
+      return {type: Type.Number, value: lhs.value !== rhs.value ? 1 : 0};
+      break }
+
+    case ExpressionKind.GT: {
+      const lhs = resolve(expr["lhs"], state);
+      const rhs = resolve(expr["rhs"], state);
+      return {type: Type.Number, value: lhs.value > rhs.value ? 1 : 0};
+      break }
+
+    case ExpressionKind.GEQ: {
+      const lhs = resolve(expr["lhs"], state);
+      const rhs = resolve(expr["rhs"], state);
+      return {type: Type.Number, value: lhs.value >= rhs.value ? 1 : 0};
+      break }
+
+    case ExpressionKind.LT: {
+      const lhs = resolve(expr["lhs"], state);
+      const rhs = resolve(expr["rhs"], state);
+      return {type: Type.Number, value: lhs.value < rhs.value ? 1 : 0};
+      break }
+
+    case ExpressionKind.LEQ: {
+      const lhs = resolve(expr["lhs"], state);
+      const rhs = resolve(expr["rhs"], state);
+      return {type: Type.Number, value: lhs.value <= rhs.value ? 1 : 0};
+      break }
+
+    case ExpressionKind.And: {
+      const lhs = resolve(expr["lhs"], state);
+      const rhs = resolve(expr["rhs"], state);
+      return {type: Type.Number, value: (!!(lhs.value && rhs.value)) ? 1 : 0};
+      break }
+
+    case ExpressionKind.Or: {
+      const lhs = resolve(expr["lhs"], state);
+      const rhs = resolve(expr["rhs"], state);
+      return {type: Type.Number, value: (!!(lhs.value || rhs.value)) ? 1 : 0};
+      break }
+
+    case ExpressionKind.Subtract: {
+      const lhs = resolve(expr["lhs"], state);
+      const rhs = resolve(expr["rhs"], state);
+      return {type: Type.Number, value: lhs.value!-rhs.value!}
+      }
+
     case ExpressionKind.Function:
+      expr["context"] = state;
     case ExpressionKind.Number:
     case ExpressionKind.String:
       return expr as any; // TODO: We know its compat, but need to make clearer.
@@ -226,7 +311,8 @@ export function resolve(expr: Expression, state: State): Value {
   throw new Error(expr.kind + " is an unresolvable expr kind");
 }
 
-function _import_(filepath: string, state: State): Value | never {
+let i = false;
+function _dofile_(filepath: string, state = new State()): {ast: any, val: Value | never} {
   const source = fs.readFileSync(filepath, "utf8");
   const parser = new ne.Parser(grammar);
 
@@ -237,22 +323,94 @@ function _import_(filepath: string, state: State): Value | never {
     throw ex;
   }
 
-  const ast: any[] = parser.finish()[0];
+//#region Built-ins
+  state.declare("__native__", {
+    type: Type.Function,
+    params: [
+      {name:"filepath", type:Type.String},
+      {name:"key", type:Type.String}],
+    context: state,
+    native(filepathV: Value, keyV: Value) {
+      // TODO: This is a bit dodgy!
+      const module: any = require(filepathV.value);
+      const value: any = module[keyV.value];
+      if (! value)
+        throw new DashError("module does not export " + keyV.value);
+      if (! ("type" in value))
+        throw new DashError("incompatible native type");
+      return value;
+    }
+  });
+  state.declare("import", {
+    type: Type.Function,
+    params: [{name:"filepath", type:Type.String}],
+    context: state,
+    native(arg: Value) {
+      // TODO: Don't allow importing same file more than once.
+      if (! (arg.type&Type.String))
+        throw new DashError("expected a string");
+      return _import_(arg.value, state);
+    }
+  });
+
+  const var_args = {
+    type: Type.Any,
+    properties: {}
+  };
+  // Add command-line args to state
+  args._.slice(2).forEach((x, i) => {
+    var_args.properties[i] = {type: Type.String, value: x};
+  });
+  state.declare("args", var_args);
+//#endregion
+
+  const asts: any[] = parser.finish();
+  const ast = asts[0];
+
   if ((! Array.isArray(ast)) || ast.length === 0)
     throw new DashError("block is missing a return value");
   if (ast.length > 1)
-    console.warn("Ambiguous ("+ast.length+" results)");
+    console.warn(`Ambiguous (${ast.length} results)`);
 
-  try {
-    for (let i = 0; i < ast.length; i++) {
-      ast[i] = resolve(ast[i], state);
-    }
+  if ((!i) && (i=true))
+    fs.writeFileSync("./ast.json", JSON.stringify(ast,null,2))
 
-    const res: any = ast[ast.length - 1];
-    return res;
-  } catch (ex) {
-    throw ex;
+  for (let i = 0; i < ast.length; i++) {
+    ast[i] = resolve(ast[i], state);
   }
+
+  const res: Value = ast[ast.length - 1];
+  return {ast, val:res};
+}
+
+const nss = { "dash": path.join(__dirname, "..", "stdlib") };
+function _import_(name: string, state: State): Value | never {
+  if (! name.endsWith(".dash"))
+    name += ".dash";
+
+  if (path.isAbsolute(name)) {
+    const subState = new State();
+    const module: Value = {
+      type: Type.Any,
+      properties: { }
+    };
+    _dofile_(name, subState);
+    Object.assign(module.properties!, subState["defs"]);
+    return module;
+  }
+
+  if (name[0] === ".")
+    return _import_(path.join(process.cwd(), name), state);
+
+  if (name.indexOf(":") >= 0) {
+    const ns = name.substring(0, name.indexOf(":"));
+    const pathPart = name.substring(ns.length + 1);
+    if (ns in nss)
+      return _import_(path.join(nss[ns], pathPart), state);
+    throw new DashError("unknown import namespace " + ns);
+  }
+
+  throw new DashError("unknown import path " + name);
 }
 
 async function main() {
@@ -265,6 +423,7 @@ async function main() {
   const source = args.eval ?? await afs.readFile(args.file!, "utf8");
   const parser = new ne.Parser(grammar);
 
+  let a = Date.now();
   try {
     parser.feed(source);
   } catch (ex: any) {
@@ -272,54 +431,18 @@ async function main() {
     return;
   }
 
-  const ast: any[] = parser.finish()[0];
-  if ((! Array.isArray(ast)) || ast.length === 0)
-    throw new DashError("block is missing a return value");
-  if (ast.length > 1)
-    console.warn("Ambiguous ("+ast.length+" results)");
-
-  await afs.writeFile("./ast.json", JSON.stringify(ast, null, 2));
-
   try { // Now try running the script.
+    const a = Date.now();
     const state = new State();
-    state.declare("import", {
-      type: Type.Function,
-      params: [{name:"filepath", type:Type.String}],
-      native(arg: Value) {
-        // TODO: Don't allow importing same file more than once.
-        if (! (arg.type&Type.String))
-          throw new DashError("expected a string");
-        return _import_(arg.value, state); // TODO: `state` will be top-level *sigh*
-      }
-    });
-    state.declare("print", {
-      type: Type.Function,
-      params: [{name: "arg0", type:Type.String}],
-      native(arg0) {
-        console.log(arg0.value);
-        return arg0;
-      }
-    });
-    await _import_(path.join(__dirname, "global.dash"), state);
+    (global as any).state = state;
 
-    const var_args = {
-      type: Type.Any,
-      properties: {}
-    };
-    // Add command-line args to state
-    args._.slice(2).forEach((x, i) => {
-      var_args.properties[i] = {type: Type.String, value: x};
-    });
-    state.declare("args", var_args);
+    const ret = _dofile_(args.file!);
+    const res = ret.val;
 
-    for (let i = 0; i < ast.length; i++) {
-      ast[i] = resolve(ast[i], state);
-    }
-
-    const res: any = ast[ast.length - 1];
-    console.log(res?.value
+    console.log(`Done in ${Date.now()-a}ms`);
+    console.log(("value" in res)
         ? `= ${chalk.yellow(res.value)} (${typeof res.value})`
-        : "<expr>");
+        : (console.log((res)), " ")+"<expr> ");
   } catch (ex) {
     throw ex;
   }
@@ -327,4 +450,3 @@ async function main() {
 
 if (module === require.main)
   main().catch(ex => console.error(ex));
-performance.now()

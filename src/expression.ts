@@ -14,19 +14,21 @@ export enum ExpressionKind {
 
   Parameter = "Param",
 
-  Equal = "Equal",
-  LessThan = "LessThan",
-  LEQ = "LEQ",
+  EQ = "Equal",
+  NEQ = "NotEqual",
+  LT = "LessThan",
+  LEQ = "LessThanOrEqual",
+  GT = "GreaterThan",
+  GEQ = "GreaterThanOrEqual",
+  And = "BinAnd",
+  Or = "BinOr",
 
   If = "If",
 
   Assignment = "Assignment",
   Dereference = "Dereference",
-  FunctionCall = "FunctionCall",
-  TypeName = "TypeName",
-
-  Any = "__ANY__",
-  Experiment = "__EXPERIMENTAL__"
+  Call = "Call",
+  TypeName = "TypeName"
 }
 
 // export interface Expression {

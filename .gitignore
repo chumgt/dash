@@ -1,4 +1,6 @@
 build/
 docs/
 node_modules/
-./ast.json
+src/grammar/**/*.ts
+ast.json
+script.dash

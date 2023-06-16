@@ -6,12 +6,7 @@
       case "x": return 16;
       default: return undefined;
     }
-    //return prefix.endsWith("b")
-    //  ? prefix.substring(0, prefix.length - 1)
-    //  : prefix;
   }
-
-  function newNumberToken() {}
 
   function getNumberTokenValue(token) {
     const value = token.value.substring(2);
@@ -23,26 +18,21 @@
     }
     return Number.parseInt(value, 10);
   }
-
-  function getNumberTokenBase(token) {
-
-  }
 %}
 
 @lexer lex
 
 Number ->
   (Float | Infinity | Integer)
-    {% (d) => d[0][0] %}
-  | %lparen _ Number _ %rparen
-    {% dn(2) %}
-  | %minus Number
-    {% (d) => {
-      const tok = Object.assign({}, d[1]);
-      tok.source.text = "-" + tok.source.text;
-      relocateSource(tok.source, d[0]);
-      return tok;
-    } %}
+    {% dn(0, 0) %}
+  # TODO: Unary negation
+  # | %minus Number
+  #   {% (d) => {
+  #     const tok = Object.assign({}, d[1]);
+  #     tok.source.text = "-" + tok.source.text;
+  #     relocateSource(tok.source, d[0]);
+  #     return tok;
+  #   } %}
 
 Float ->
   %float
@@ -89,6 +79,7 @@ Infinity ->
   %infinity
     {% (d) => ({
       "kind": ExpressionKind.Number,
+      "constant": true,
       "value": Number.POSITIVE_INFINITY,
       source: d[0]
     }) %}

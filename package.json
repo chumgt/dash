@@ -1,14 +1,15 @@
 {
   "private": true,
   "name": "@chumgt/dash",
-  "version": "1.0.0",
+  "version": "0.1.0",
   "bin": {
     "dash": "./build/main.js"
   },
   "scripts": {
     "build": "gulp build",
-    "script": "gulp build-grammar && ts-node ./src/main.ts -f script.dash",
-    "start": "node build/main.js"
+    "script": "gulp build-grammar && ts-node ./src/main.ts -f ./script.dash",
+    "start": "node build/main.js",
+    "test": "ava --config \"./ava.config.js\""
   },
   "devDependencies": {
     "@types/chalk": "^2.2.0",
@@ -19,6 +20,7 @@
     "@types/nearley": "^2.11.1",
     "@types/node": "^14.10.1",
     "@types/yargs": "^15.0.5",
+    "ava": "^5.3.0",
     "del": "^5.1.0",
     "gulp": "^4.0.2",
     "gulp-nearley": "^1.0.0",
