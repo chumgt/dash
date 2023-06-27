@@ -154,8 +154,12 @@ export function resolve(expr: Expression, state: State): Value {
       if (params.length !== args.length)
         throw new DashError(`expected ${params.length} args, received ${args.length}`);
 
-      for (let i = 0; i < params.length; i++)
+      for (let i = 0; i < params.length; i++) {
+        if (! (args[i].type & params[i].type))
+          throw new DashError("invalid param type: param "+i+
+              " expected "+params[i].type+" but received "+args[i].type);
         subState.declare(params[i].name, args[i]);
+      }
 
       if (target.native) {
         return target.native(...expr["args"].map(x => resolve(x, subState)));
