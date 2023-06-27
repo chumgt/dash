@@ -1,10 +1,11 @@
 @{%
   import * as moo from "moo";
 
-  import { Type } from "./../data";
+  import { Type } from "../data";
+  import { DashError } from "../error";
   import {
     Expression, ExpressionKind
-  } from "./../expression";
+  } from "../expression";
 
   /** Returns a Nearley parser postprocess function which returns
    * `d[index0][index1][index2][...][indexN]`. */
@@ -26,17 +27,26 @@
 
   function getTypeByName(name: string): Type {
     switch (name) {
+      case "any":
+        return Type.Any;
+      case "function":
+        return Type.Function;
       case "number":
         return Type.Number;
       case "string":
         return Type.String;
       default:
-        throw new Error("Unknown type " + name);
+        throw new DashError("Unknown type " + name);
     }
   }
 
   // Some tokens have `as any` because Nearley-to-Typescript doesn't like it otherwise.
   const lex = moo.compile({
+    //comment: {
+    //  match: /\/\/.*\n/ as any,
+    //  lineBreaks: true,
+    //  value: (x) => null as any
+    //},
     identifier: {
       match: /[a-zA-Z_][a-zA-Z0-9_]*/,
       type: moo.keywords({
@@ -108,8 +118,8 @@ Chunk ->
     {% id %}
 
 Expr ->
-  BinaryExpr {% id %}
-  | ValueExpr  {%id%}
+  BinaryExpr  {%id%}
+  | ValueExpr {%id%}
 
 BinaryExpr ->
   AssignExpr {% id %}
@@ -131,10 +141,18 @@ String ->
   }) %}
 
 ValueExpr ->
-  (CallExpr | DerefExpr | ValueLiteral)
+  (CallExpr | CastExpr | DerefExpr | ValueLiteral)
     {% dn(0, 0) %}
   | %lparen _ Expr _ %rparen
     {% dn(2) %}
+
+CastExpr ->
+  ValueExpr _ %colon _ TypeName
+    {% (d) => ({
+      "kind": ExpressionKind.Cast,
+      "lhs": d[0],
+      "rhs": d[4]
+    }) %}
 
 DerefExpr ->
   ValueExpr _ %dot Identifier

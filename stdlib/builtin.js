@@ -2,7 +2,6 @@ const data = require("./../build/data");
 
 module.exports.random = {
   type: data.Type.Function,
-  context: global.state,
   params: [],
   native() {
     return {
@@ -14,12 +13,11 @@ module.exports.random = {
 
 module.exports.write = {
   type: data.Type.Function,
-  context: global.state,
   params: [
     {type: data.Type.String}
   ],
   native(arg) {
-    process.stdout.write(arg.value.toString());
+    process.stdout.write(arg.data.toString());
     return arg;
   }
 };

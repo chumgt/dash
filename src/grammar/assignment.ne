@@ -48,4 +48,4 @@ AssignExpr ->
   } %}
 
 TypeName ->
-  ("string" | "number") {% (d) => getTypeByName(d[0][0].value) %}
+  ("any" | "function" | "number" | "string") {% (d) => getTypeByName(d[0][0].value) %}

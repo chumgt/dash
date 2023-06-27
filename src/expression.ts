@@ -1,5 +1,9 @@
 
 export enum ExpressionKind {
+  /* TODO: These are strings for development as it makes it easier to read the
+   * AST, but should be numbers in production.
+   */
+
   Number = "Number",
   Identifier = "Identifier",
   Function = "Function",
@@ -28,7 +32,10 @@ export enum ExpressionKind {
   Assignment = "Assignment",
   Dereference = "Dereference",
   Call = "Call",
-  TypeName = "TypeName"
+  Cast = "Cast",
+  TypeName = "TypeName",
+
+  Comment = "Comment"
 }
 
 // export interface Expression {
