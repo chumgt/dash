@@ -4,15 +4,16 @@ import * as ne from "nearley";
 import * as path from "node:path";
 import * as yargs from "yargs";
 import chalk from "chalk";
-import { Type } from "./data";
+import { Type, Value } from "./data";
 import { DashError } from "./error";
 import { Expression, ExpressionKind } from "./expression";
+import * as data from "./data";
 
 const grammar = ne.Grammar.fromCompiled(require("./grammar/index"));
 
 export class State {
   public readonly parent?: State;
-  private readonly defs: Record<string, Value>;
+  public readonly defs: Record<string, Value>;
 
   public constructor(parent?: State) {
     this.parent = parent;
@@ -40,8 +41,7 @@ export class State {
     if (! (dec.type & value.type))
       throw new DashError(`cannot assign ${value.type} to ${dec.type}`)
 
-    dec.properties = value.properties;
-    dec.value = value;
+    this.defs[identifier] = value;
     return value;
   }
 
@@ -75,13 +75,6 @@ export class State {
   }
 }
 
-export interface Value extends Record<string, any> {
-  type: Type;
-  constant?: boolean;
-  properties?: Record<string, Value>;
-  value?: any;
-}
-
 const pargs = yargs
     .string("printast")
       .choices("printast", ["all", "one"])
@@ -91,7 +84,7 @@ const pargs = yargs
       .describe("eval", "The source (input) code")
     .string("file")
       .alias("file", "f")
-    .epilog("Dash " + chalk.redBright("<3") + " you!");
+    .scriptName(process.argv[1])
 
 const args = pargs.parse(process.argv);
 
@@ -104,7 +97,7 @@ export function resolve(expr: Expression, state: State): Value {
       if (! (lhs.type&Type.Number && rhs.type&Type.Number))
         throw new DashError("not numbers");
 
-      return {type: Type.Number, value: lhs.value+rhs.value};
+      return new Value(Type.Number, lhs.data+rhs.data);
       break }
 
     case ExpressionKind.Assignment: {
@@ -117,7 +110,8 @@ export function resolve(expr: Expression, state: State): Value {
           throw new DashError("already defined " + id);
 
         const decl = state.declare(id, resolve(expr["rhs"], state));
-        decl.constant = expr["constant"];
+        // decl.context = state;
+        // decl.constant = expr["constant"];
       }
       else if (expr["lhs"].kind === ExpressionKind.Dereference) {
         const target = resolve(expr["lhs"]["lhs"], state);
@@ -125,7 +119,6 @@ export function resolve(expr: Expression, state: State): Value {
             ? expr["lhs"]["rhs"].value
             : resolve(expr["lhs"]["rhs"], state);
         const value = resolve(expr["rhs"], state);
-        target.properties ??= { };
         target.properties[key] = value;
         return value;
       }
@@ -137,12 +130,10 @@ export function resolve(expr: Expression, state: State): Value {
           if (val?.constant)
             throw new DashError("cannot assign to constant");
 
-          if (val) {
-            if (! (res.type & val.type))
-              throw new DashError("incompatible types");
-          }
+          if (! (res.type & val.type))
+            throw new DashError("incompatible types");
 
-          val.value = res;
+          val.data = res;
           return res;
         } else {
           state.declare(expr["lhs"].value, res);
@@ -156,10 +147,9 @@ export function resolve(expr: Expression, state: State): Value {
       if (! (target.type & Type.Function))
         throw new DashError("target is not a function");
 
-      let subState = target["context"].push();
+      let subState = target.context!.push();
       Object.assign(subState.defs, state["defs"]);
-      subState = subState.push();
-      const params: any[] = target.params;
+      const params = target.params;
       const args: Value[] = expr["args"].map(x => resolve(x, subState));
       if (params.length !== args.length)
         throw new DashError(`expected ${params.length} args, received ${args.length}`);
@@ -176,6 +166,18 @@ export function resolve(expr: Expression, state: State): Value {
         res = resolve(x, subState);
       return res }
 
+    case ExpressionKind.Cast: {
+      const lhs = resolve(expr["lhs"], state) as Value;
+      /** The type. */
+      const rhs = expr["rhs"] as Type;
+
+      return lhs.cast(rhs);
+
+      // const val = data.cast(lhs, rhs);
+
+      // console.log();
+    }
+
     case ExpressionKind.Concat: {
       const lhs = resolve(expr["lhs"], state);
       const rhs = resolve(expr["rhs"], state);
@@ -185,10 +187,7 @@ export function resolve(expr: Expression, state: State): Value {
       //     value: String(lhs.value).concat(String(rhs.value))
       //   };
       // }
-      return {
-        type: Type.String,
-        value: String(lhs.value).concat(String(rhs.value))
-      };
+      return new Value(Type.String, String(lhs.data).concat(String(rhs.data)));
       break }
 
     case ExpressionKind.Dereference: {
@@ -209,11 +208,11 @@ export function resolve(expr: Expression, state: State): Value {
       if (! ("value" in rhs))
         throw new DashError("unknown deref rhs");
 
-      if (lhs["properties"][rhs.value])
-        return lhs["properties"][rhs.value];
+      if (lhs["properties"][rhs.data])
+        return lhs["properties"][rhs.data];
 
-      return {type: Type.Any};
-        // throw new DashError("property "+rhs.value+" does not exist on object");
+      // return {type: Type.Any};
+      throw new DashError("property "+rhs.value+" does not exist on object");
 
       break }
 
@@ -223,13 +222,13 @@ export function resolve(expr: Expression, state: State): Value {
       if (! (lhs.type&Type.Number && rhs.type&Type.Number))
         throw new DashError("not numbers");
 
-      return {type: Type.Number, value: lhs.value/rhs.value};
+      return new Value(Type.Number, lhs.data/rhs.data);
       break }
 
     case ExpressionKind.Exponential: {
       const lhs = resolve(expr["lhs"], state);
       const rhs = resolve(expr["rhs"], state);
-      return {type: Type.Number, value: lhs.value!**rhs.value!}
+      return new Value(Type.Number, lhs.data!**rhs.data!)
       }
 
     case ExpressionKind.Identifier:
@@ -244,68 +243,82 @@ export function resolve(expr: Expression, state: State): Value {
       if (! (lhs.type&Type.Number && rhs.type&Type.Number))
         throw new DashError("not numbers");
 
-      return {type: Type.Number, value: lhs.value*rhs.value};
+      return new Value(Type.Number, lhs.data*rhs.data);
       break }
 
     case ExpressionKind.EQ: {
       const lhs = resolve(expr["lhs"], state);
       const rhs = resolve(expr["rhs"], state);
-      return {type: Type.Number, value: lhs.value === rhs.value ? 1 : 0};
+      return new Value(Type.Number, lhs.data===rhs.data? 1 : 0);
       break }
 
     case ExpressionKind.NEQ: {
       const lhs = resolve(expr["lhs"], state);
       const rhs = resolve(expr["rhs"], state);
-      return {type: Type.Number, value: lhs.value !== rhs.value ? 1 : 0};
+      return new Value(Type.Number, lhs.data!==rhs.data? 1 : 0);
       break }
 
     case ExpressionKind.GT: {
       const lhs = resolve(expr["lhs"], state);
       const rhs = resolve(expr["rhs"], state);
-      return {type: Type.Number, value: lhs.value > rhs.value ? 1 : 0};
+      return new Value(Type.Number, lhs.data>rhs.data? 1 : 0);
       break }
 
     case ExpressionKind.GEQ: {
       const lhs = resolve(expr["lhs"], state);
       const rhs = resolve(expr["rhs"], state);
-      return {type: Type.Number, value: lhs.value >= rhs.value ? 1 : 0};
+      return new Value(Type.Number, lhs.data>=rhs.data? 1 : 0);
       break }
 
     case ExpressionKind.LT: {
       const lhs = resolve(expr["lhs"], state);
       const rhs = resolve(expr["rhs"], state);
-      return {type: Type.Number, value: lhs.value < rhs.value ? 1 : 0};
+      return new Value(Type.Number, lhs.data<rhs.data? 1 : 0);
       break }
 
     case ExpressionKind.LEQ: {
       const lhs = resolve(expr["lhs"], state);
       const rhs = resolve(expr["rhs"], state);
-      return {type: Type.Number, value: lhs.value <= rhs.value ? 1 : 0};
+      return new Value(Type.Number, lhs.data <= rhs.data ? 1 : 0);
       break }
 
     case ExpressionKind.And: {
       const lhs = resolve(expr["lhs"], state);
       const rhs = resolve(expr["rhs"], state);
-      return {type: Type.Number, value: (!!(lhs.value && rhs.value)) ? 1 : 0};
+      return new Value(Type.Number, (!!(lhs.data && rhs.data)) ? 1 : 0);
       break }
 
     case ExpressionKind.Or: {
       const lhs = resolve(expr["lhs"], state);
       const rhs = resolve(expr["rhs"], state);
-      return {type: Type.Number, value: (!!(lhs.value || rhs.value)) ? 1 : 0};
+      return new Value(Type.Number, (!!(lhs.data || rhs.data)) ? 1 : 0);
       break }
 
     case ExpressionKind.Subtract: {
       const lhs = resolve(expr["lhs"], state);
       const rhs = resolve(expr["rhs"], state);
-      return {type: Type.Number, value: lhs.value!-rhs.value!}
+      return new Value(Type.Number, lhs.data-rhs.data);
       }
 
-    case ExpressionKind.Function:
-      expr["context"] = state;
+    case ExpressionKind.Function: {
+      const value = new Value(Type.Function, {});
+      // (value as any).body = (expr as any).body;
+      value.params = (expr as any).params;
+      value["context"] = state;
+      value["body"] = (expr as any).body;
+      return value;
+      // break;
+    }
     case ExpressionKind.Number:
     case ExpressionKind.String:
-      return expr as any; // TODO: We know its compat, but need to make clearer.
+    {
+      const val = expr as any;
+      return new Value(val.type, val.value);
+      // return expr as any; // TODO: We know its compat, but need to make clearer.
+    }
+
+    case ExpressionKind.Comment:
+      return expr as any;
   }
 
   throw new Error(expr.kind + " is an unresolvable expr kind");
@@ -324,42 +337,54 @@ function _dofile_(filepath: string, state = new State()): {ast: any, val: Value 
   }
 
 //#region Built-ins
-  state.declare("__native__", {
-    type: Type.Function,
-    params: [
-      {name:"filepath", type:Type.String},
-      {name:"key", type:Type.String}],
-    context: state,
-    native(filepathV: Value, keyV: Value) {
-      // TODO: This is a bit dodgy!
-      const module: any = require(filepathV.value);
-      const value: any = module[keyV.value];
-      if (! value)
-        throw new DashError("module does not export " + keyV.value);
-      if (! ("type" in value))
-        throw new DashError("incompatible native type");
-      return value;
-    }
-  });
-  state.declare("import", {
-    type: Type.Function,
-    params: [{name:"filepath", type:Type.String}],
-    context: state,
-    native(arg: Value) {
-      // TODO: Don't allow importing same file more than once.
-      if (! (arg.type&Type.String))
-        throw new DashError("expected a string");
-      return _import_(arg.value, state);
-    }
-  });
+  // state.declare("__native__", {
+  //   type: Type.Function,
+  //   params: [
+  //     {name:"filepath", type:Type.String},
+  //     {name:"key", type:Type.String}],
+  //   context: state,
+  //   native(filepathV: Value, keyV: Value) {
+  //     // TODO: This is a bit dodgy!
+  //     const module: any = require(filepathV.value);
+  //     const value: any = module[keyV.value];
+  //     if (! value)
+  //       throw new DashError("module does not export " + keyV.value);
+  //     if (! ("type" in value))
+  //       throw new DashError("incompatible native type");
+  //     return value;
+  //   }
+  // });
 
-  const var_args = {
-    type: Type.Any,
-    properties: {}
-  };
+    state.declare("__native__", data.newFunction(state,
+      [{name: "filepath", type:Type.String},
+       {name: "key", type:Type.String}],
+      (filepath: Value, key: Value): Value => {
+        const module: any = require(filepath.data);
+        const value: Value = module[key.data];
+
+        if (! value)
+          throw new DashError("no export "+key.data);
+        if (! ("type" in value))
+          throw new DashError("incompatible native type");
+
+        value.context = state;
+        return value;
+      }
+    ));
+
+    state.declare("import", data.newFunction(state,
+      [{name: "filepath", type: Type.String}],
+      (arg: Value) => {
+        if (! (arg.type & Type.String))
+          throw new DashError("expected string");
+        return _import_(arg.data, state);
+      }
+    ));
+
+  const var_args = new Value(Type.Any, { });
   // Add command-line args to state
   args._.slice(2).forEach((x, i) => {
-    var_args.properties[i] = {type: Type.String, value: x};
+    var_args.properties[i] = new Value(Type.String, x);
   });
   state.declare("args", var_args);
 //#endregion
@@ -390,10 +415,7 @@ function _import_(name: string, state: State): Value | never {
 
   if (path.isAbsolute(name)) {
     const subState = new State();
-    const module: Value = {
-      type: Type.Any,
-      properties: { }
-    };
+    const module = new Value(Type.Any, {});
     _dofile_(name, subState);
     Object.assign(module.properties!, subState["defs"]);
     return module;
@@ -434,9 +456,12 @@ async function main() {
   try { // Now try running the script.
     const a = Date.now();
     const state = new State();
-    (global as any).state = state;
+    const vGlobal = new Value(Type.Any, {});
+    Object.assign(vGlobal.properties, state.defs);
+    state.declare("global", new Value(Type.Any, {}));
+    (vGlobal as any).state = state;
 
-    const ret = _dofile_(args.file!);
+    const ret = _dofile_(args.file!, state);
     const res = ret.val;
 
     console.log(`Done in ${Date.now()-a}ms`);
