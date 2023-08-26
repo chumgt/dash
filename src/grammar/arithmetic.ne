@@ -53,10 +53,18 @@ ArithmeticExpr ->
   AdditiveExpr
     {% id %}
 
-ExponentialExpr ->
-  ValueExpr _ %power _ ExponentialExpr
-    {% (d) => newArithmeticExprToken(ExpressionKind.Exponential, d[0], d[4]) %}
+UnaryExpr ->
+  %plus _ ArithmeticExpr
+    {% dn(2) %}
+  | %minus _ ArithmeticExpr
+    {% (d) => newUnaryOpToken(ExpressionKind.Negate, d[2]) %}
   | ValueExpr
+    {% id %}
+
+ExponentialExpr ->
+  UnaryExpr _ %power _ ExponentialExpr
+    {% (d) => newArithmeticExprToken(ExpressionKind.Exponential, d[0], d[4]) %}
+  | UnaryExpr
     {% id %}
 
 MultiplicativeExpr ->

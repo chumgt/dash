@@ -4,10 +4,6 @@ import { State } from "./main";
 export type NativeFunction =
     (...args: Value[]) => Value | never;
 
-// export class Number {
-//   // public static readonly INFINITY: NumberToken;
-// }
-
 export enum Type {
   Number = 1 << 0,
   String = 1 << 1,
@@ -17,33 +13,20 @@ export enum Type {
   Undefined = 0
 }
 
-// export abstract class TypeBox {
-//   public abstract toNumber(value: Value): Value | never;
-//   public abstract toString(value: Value): Value | never;
-// }
-
 export interface Param {
   name: string;
   type: Type;
 }
 
-export class Value
-implements Record<string, any> {
-  // public static from(x: boolean | number | string): Value {
-  //   switch (typeof x) {
-  //     case "boolean":
-
-  //   }
-  // }
-
+export class Value {
   public readonly type: Type;
   public constant?: boolean;
   public writable?: boolean;
 
   public context?: any;
-  public params: {name:string; type:Type}[];
+  public params: Param[];
   public properties: Record<string, Value>;
-  private _data!: any;
+  private _data: any;
 
   public constructor(type: Type, data: any) {
     this.type = type;
@@ -84,12 +67,6 @@ implements Record<string, any> {
   }
 }
 
-export class Func extends Value {
-  public constructor(data: any) {
-    super(Type.Function, data);
-  }
-}
-
 export function cast(val: Value, type: Type): Value | never {
   if (val.type === type)
     return val;
@@ -111,8 +88,8 @@ export function cast(val: Value, type: Type): Value | never {
 
 export function newFunction(context: State, params: Param[], native: NativeFunction): Value {
   const val = new Value(Type.Any, {});
-  (val as any).context = context;
-  (val as any).native = native;
+  val.context = context;
+  val.native = native;
   val.params = params;
   return val;
 }

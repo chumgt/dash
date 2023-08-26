@@ -9,6 +9,6 @@ test("Resolve", (test) => {
     value: "Hello, world!"
   } as any, state);
 
-  test.is(res.value, "Hello, world!");
+  test.is(res.data, "Hello, world!");
   test.pass();
 });

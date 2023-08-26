@@ -13,6 +13,7 @@ export enum ExpressionKind {
   Exponential = "Exponential",
   Multiply = "Multiply",
   Subtract = "Subtract",
+  Negate = "Negate",
 
   Concat = "Concat",
 
@@ -68,14 +69,18 @@ export abstract class BinaryExpression extends Expression {
   lhs: Expression;
   rhs: Expression;
 
-  public constructor(lhs: Expression, rhs: Expression) {
-    super(ExpressionKind.Add);
+  public constructor(kind: ExpressionKind, lhs: Expression, rhs: Expression) {
+    super(kind);
     this.lhs = lhs;
     this.rhs = rhs;
   }
 }
 
 export class AddExpression extends BinaryExpression {
+  public constructor(lhs: Expression, rhs: Expression) {
+    super(ExpressionKind.Add, lhs, rhs);
+  }
+
   public accept(v: ExpressionSourceBuilder): void {
     v.sourceString += "(";
     this.lhs.accept(v);

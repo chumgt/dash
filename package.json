@@ -9,7 +9,7 @@
     "build": "gulp build",
     "script": "gulp build-grammar && ts-node ./src/main.ts -f ./script.dash",
     "start": "node build/main.js",
-    "test": "ava --config \"./ava.config.js\""
+    "test": "gulp build-grammar && ava --config \"./ava.config.js\""
   },
   "devDependencies": {
     "@types/chalk": "^2.2.0",

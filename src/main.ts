@@ -51,9 +51,13 @@ export class State {
   }
 
   public isDeclared(id: string): boolean {
-    return (id in this.defs)
+    return this.isOwnDeclared(id)
         || (this.parent?.isDeclared(id))
         || false;
+  }
+
+  public isOwnDeclared(id: string): boolean {
+    return id in this.defs;
   }
 
   public setValue(identifier: string, value: Value): never | void {
@@ -91,22 +95,13 @@ const args = pargs.parse(process.argv);
 /** Resolve an expression to a value. */
 export function resolve(expr: Expression, state: State): Value {
   switch (expr.kind) {
-    case ExpressionKind.Add: {
-      const lhs = resolve(expr["lhs"], state);
-      const rhs = resolve(expr["rhs"], state);
-      if (! (lhs.type&Type.Number && rhs.type&Type.Number))
-        throw new DashError("not numbers");
-
-      return new Value(Type.Number, lhs.data+rhs.data);
-      break }
-
     case ExpressionKind.Assignment: {
       if (expr["declaration"]) {
         if (expr["lhs"].kind === ExpressionKind.Dereference)
           throw new DashError("cannot declare property outside of scope");
 
         const id = expr["lhs"].value as string;
-        if (state.isDeclared(id))
+        if (state.isOwnDeclared(id))
           throw new DashError("already defined " + id);
 
         const decl = state.declare(id, resolve(expr["rhs"], state));
@@ -147,22 +142,23 @@ export function resolve(expr: Expression, state: State): Value {
       if (! (target.type & Type.Function))
         throw new DashError("target is not a function");
 
-      let subState = target.context!.push();
-      Object.assign(subState.defs, state["defs"]);
+      const subState = (target.context ?? state).push();
       const params = target.params;
       const args: Value[] = expr["args"].map(x => resolve(x, subState));
       if (params.length !== args.length)
-        throw new DashError(`expected ${params.length} args, received ${args.length}`);
+        throw new DashError(`expected ${params.length} args, received ${expr["args"].length}`);
+
+      if (target.native) {
+        return target.native(...args);
+      }
 
       for (let i = 0; i < params.length; i++) {
         if (! (args[i].type & params[i].type))
           throw new DashError("invalid param type: param "+i+
               " expected "+params[i].type+" but received "+args[i].type);
-        subState.declare(params[i].name, args[i]);
-      }
 
-      if (target.native) {
-        return target.native(...expr["args"].map(x => resolve(x, subState)));
+        if (! target.native)
+          subState.declare(params[i].name, args[i]);
       }
 
       let res;
@@ -176,13 +172,10 @@ export function resolve(expr: Expression, state: State): Value {
       const rhs = expr["rhs"] as Type;
 
       return lhs.cast(rhs);
-
-      // const val = data.cast(lhs, rhs);
-
-      // console.log();
     }
 
     case ExpressionKind.Concat: {
+      // console.log("Concat: resolve ", expr["lhs"], resolve(expr["lhs"],state))
       const lhs = resolve(expr["lhs"], state);
       const rhs = resolve(expr["rhs"], state);
       // if (lhs.value && rhs.value) {
@@ -220,6 +213,23 @@ export function resolve(expr: Expression, state: State): Value {
 
       break }
 
+    case ExpressionKind.Identifier:
+      if (state.isDeclared(expr["value"])) {
+        return state.getValue(expr["value"])!;
+      }
+      throw new DashError("can't resolve identifier " + expr["value"])
+
+    case ExpressionKind.Negate: {
+      const rhs = resolve(expr["rhs"], state);
+      return new Value(Type.Number, -rhs.data);
+    }
+
+    case ExpressionKind.Exponential: {
+      const lhs = resolve(expr["lhs"], state);
+      const rhs = resolve(expr["rhs"], state);
+      return new Value(Type.Number, lhs.data!**rhs.data!)
+      }
+
     case ExpressionKind.Divide: {
       const lhs = resolve(expr["lhs"], state);
       const rhs = resolve(expr["rhs"], state);
@@ -229,18 +239,6 @@ export function resolve(expr: Expression, state: State): Value {
       return new Value(Type.Number, lhs.data/rhs.data);
       break }
 
-    case ExpressionKind.Exponential: {
-      const lhs = resolve(expr["lhs"], state);
-      const rhs = resolve(expr["rhs"], state);
-      return new Value(Type.Number, lhs.data!**rhs.data!)
-      }
-
-    case ExpressionKind.Identifier:
-      if (state.isDeclared(expr["value"])) {
-        return state.getValue(expr["value"])!;
-      }
-      throw new DashError("can't resolve identifier " + expr["value"])
-
     case ExpressionKind.Multiply: {
       const lhs = resolve(expr["lhs"], state);
       const rhs = resolve(expr["rhs"], state);
@@ -249,6 +247,21 @@ export function resolve(expr: Expression, state: State): Value {
 
       return new Value(Type.Number, lhs.data*rhs.data);
       break }
+
+    case ExpressionKind.Add: {
+      const lhs = resolve(expr["lhs"], state);
+      const rhs = resolve(expr["rhs"], state);
+      if (! (lhs.type&Type.Number && rhs.type&Type.Number))
+        throw new DashError("not numbers");
+
+      return new Value(Type.Number, lhs.data+rhs.data);
+      break }
+
+    case ExpressionKind.Subtract: {
+      const lhs = resolve(expr["lhs"], state);
+      const rhs = resolve(expr["rhs"], state);
+      return new Value(Type.Number, lhs.data-rhs.data);
+      }
 
     case ExpressionKind.EQ: {
       const lhs = resolve(expr["lhs"], state);
@@ -298,12 +311,6 @@ export function resolve(expr: Expression, state: State): Value {
       return new Value(Type.Number, (!!(lhs.data || rhs.data)) ? 1 : 0);
       break }
 
-    case ExpressionKind.Subtract: {
-      const lhs = resolve(expr["lhs"], state);
-      const rhs = resolve(expr["rhs"], state);
-      return new Value(Type.Number, lhs.data-rhs.data);
-      }
-
     case ExpressionKind.Function: {
       const value = new Value(Type.Function, {});
       // (value as any).body = (expr as any).body;
@@ -329,61 +336,45 @@ export function resolve(expr: Expression, state: State): Value {
 }
 
 let i = false;
-function _dofile_(filepath: string, state = new State()): {ast: any, val: Value | never} {
-  const source = fs.readFileSync(filepath, "utf8");
+export function dofile(filepath: string, state = new State()): {ast: any, val: Value | never} {
+  const chunk = fs.readFileSync(filepath, "utf-8");
+  return dostring(chunk, state);
+}
+
+export function dostring(chunk: string, state = new State()): {ast: any, val: Value | never} {
   const parser = new ne.Parser(grammar);
 
   try {
-    parser.feed(source);
+    parser.feed(chunk);
   } catch (ex: any) {
     console.error("Parsing error @" + ex.offset, ex);
     throw ex;
   }
 
-//#region Built-ins
-  // state.declare("__native__", {
-  //   type: Type.Function,
-  //   params: [
-  //     {name:"filepath", type:Type.String},
-  //     {name:"key", type:Type.String}],
-  //   context: state,
-  //   native(filepathV: Value, keyV: Value) {
-  //     // TODO: This is a bit dodgy!
-  //     const module: any = require(filepathV.value);
-  //     const value: any = module[keyV.value];
-  //     if (! value)
-  //       throw new DashError("module does not export " + keyV.value);
-  //     if (! ("type" in value))
-  //       throw new DashError("incompatible native type");
-  //     return value;
-  //   }
-  // });
+  state.declare("__native__", data.newFunction(state,
+    [{name: "filepath", type:Type.String},
+      {name: "key", type:Type.String}],
+    (filepath: Value, key: Value): Value => {
+      const module: any = require(filepath.data);
+      const value: Value = module[key.data];
 
-    state.declare("__native__", data.newFunction(state,
-      [{name: "filepath", type:Type.String},
-       {name: "key", type:Type.String}],
-      (filepath: Value, key: Value): Value => {
-        const module: any = require(filepath.data);
-        const value: Value = module[key.data];
+      if (! value)
+        throw new DashError("no export "+key.data);
+      if (! ("type" in value))
+        throw new DashError("incompatible native type");
 
-        if (! value)
-          throw new DashError("no export "+key.data);
-        if (! ("type" in value))
-          throw new DashError("incompatible native type");
-
-        value.context = state;
-        return value;
-      }
-    ));
-
-    state.declare("import", data.newFunction(state,
-      [{name: "filepath", type: Type.String}],
-      (arg: Value) => {
-        if (! (arg.type & Type.String))
-          throw new DashError("expected string");
-        return _import_(arg.data, state);
-      }
-    ));
+      value.context = state;
+      return value;
+    }
+  ));
+  state.declare("import", data.newFunction(state,
+    [{name: "filepath", type: Type.String}],
+    (arg: Value) => {
+      if (! (arg.type & Type.String))
+        throw new DashError("expected string");
+      return _import_(arg.data, state);
+    }
+  ));
 
   const var_args = new Value(Type.Any, { });
   // Add command-line args to state
@@ -412,6 +403,11 @@ function _dofile_(filepath: string, state = new State()): {ast: any, val: Value 
   return {ast, val:res};
 }
 
+export function evaluate(chunk: string, state = new State()): Value | never {
+  const ret = dostring(chunk, state);
+  return ret.val;
+}
+
 const nss = { "dash": path.join(__dirname, "..", "stdlib") };
 function _import_(name: string, state: State): Value | never {
   if (! name.endsWith(".dash"))
@@ -420,7 +416,7 @@ function _import_(name: string, state: State): Value | never {
   if (path.isAbsolute(name)) {
     const subState = new State();
     const module = new Value(Type.Any, {});
-    _dofile_(name, subState);
+    dofile(name, subState);
     Object.assign(module.properties!, subState["defs"]);
     return module;
   }
@@ -446,17 +442,6 @@ async function main() {
     return;
   }
 
-  const source = args.eval ?? await afs.readFile(args.file!, "utf8");
-  const parser = new ne.Parser(grammar);
-
-  let a = Date.now();
-  try {
-    parser.feed(source);
-  } catch (ex: any) {
-    console.error("Parsing error @" + ex.offset, ex);
-    return;
-  }
-
   try { // Now try running the script.
     const a = Date.now();
     const state = new State();
@@ -465,7 +450,7 @@ async function main() {
     state.declare("global", new Value(Type.Any, {}));
     (vGlobal as any).state = state;
 
-    const ret = _dofile_(args.file!, state);
+    const ret = dofile(args.file!, state);
     const res = ret.val;
 
     console.log(`Done in ${Date.now()-a}ms`);

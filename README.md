@@ -3,7 +3,7 @@
 
 A strongly-typed, interpreted scripting language.
 
-## Features & Philosophy
+## Features
 
 ```lua
 io ::= import("dash:io");
@@ -14,8 +14,11 @@ io.write(("Hello, world!"));
 * Static typing.
 
 * Everything is an expression.
-* Every expression has a type.
-* Null-less. There is no null/nullptr/nil/undefined/None/void.
+* Every expression returns a value.
+* Every value has a type.
+* Every type is a value.
+* Null-less. There is no `null`/`nullptr`/`nil`/`undefined`/`None`/`Nothing`/
+  `void`.
 * Closures.
 
 ## Build & Test
@@ -33,8 +36,5 @@ npm test
   enclosed in its own parentheses. `" "` works fine. I have no idea why. This
   issue is high priority. Parsing strings is *hard*.
 
-* It's slow. Like, *really* slow. Parsing and executing a minimal "Hello world"
-  program (which imports `io`) takes 118ms on my machine (16 cores @3.7GHz,
-  16GB of 1067MHz RAM). I think the language roadmap ultimately involves
-  compiling to Lua or JVM bytecode instead of interpreting the AST as it is
-  currently done.
+* It's slow. Parsing and executing a minimal "Hello world"
+  program (which imports `io`) takes 118ms on my machine.

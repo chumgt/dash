@@ -79,11 +79,11 @@
     semi: ";",
 
     eq: "=",
-    neq: "!=",
     gt: ">",
     lt: "<",
     and: "&",
     or: "|",
+    not: "!",
 
     lbracket: "[",
     rbracket: "]",

@@ -21,6 +21,10 @@ export interface BinaryOpToken extends ExpressionToken {
   rhs: Token;
 }
 
+export interface UnaryOpToken extends ExpressionToken {
+  rhs: Token;
+}
+
 export interface DerefToken extends BinaryOpToken { }
 
 /// Literal values.
