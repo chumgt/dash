@@ -4,8 +4,17 @@
   import { Type } from "../data";
   import { DashError } from "../error";
   import {
-    Expression, ExpressionKind
+    CallExpression,
+    CastExpression,
+    DereferenceExpression,
+    ExpressionKind,
+    FunctionExpression,
+    IdentifierExpression,
+    ValueExpression,
+    ValueKind
   } from "../expression";
+  import * as expr from "../expression";
+  import * as token from "../token";
 
   /** Returns a Nearley parser postprocess function which returns
    * `d[index0][index1][index2][...][indexN]`. */
@@ -56,7 +65,7 @@
     },
     float: /[0-9]+\.[0-9]+/,
     base2: /0b[0-1]+/,
-    base8: /0c[0-7]+/,
+    base8: /0o[0-7]+/,
     base16: /0x[0-9A-Fa-f]+/,
     base10: {
       match: /0|[1-9][0-9]*/ as any,
@@ -105,6 +114,7 @@
 
 @lexer lex
 @preprocessor typescript
+
 @builtin "whitespace.ne"
 @include "src/grammar/arithmetic.ne"
 @include "src/grammar/assignment.ne"
@@ -112,33 +122,30 @@
 @include "src/grammar/logic.ne"
 @include "src/grammar/number.ne"
 @include "src/grammar/operator.ne"
+@include "src/grammar/value.ne"
 
 Chunk ->
   FunctionBody
     {% id %}
 
 Expr ->
-  BinaryExpr  {%id%}
-  | ValueExpr {%id%}
+  AssignmentExpr {% id %}
+  # BinaryExpr  {% id %}
+  # | IfExpr    {% id %}
+  # | ValueExpr {% id %}
 
 BinaryExpr ->
   AssignExpr {% id %}
   | LogicalExpr {% id %}
 
-Identifier ->
-  %identifier {% (d) => ({
-    "kind": ExpressionKind.Identifier,
-    "value": d[0].value
-  }) %}
+IfExpr ->
+  Expr __ "if" __ Expr __ "else" __ Expr
+    {% (d) => new expr.IfExpression(d[4], d[0], d[8]) %}
+  | Expr
+    {% id %}
 
-String ->
-  %string {% (d) => ({
-    "kind": ExpressionKind.String,
-    "constant": true,
-    "type": Type.String,
-    "value": JSON.parse("\""+d[0].value+"\""), // TODO: This is overkill just to get ctrl chars
-    "source": d[0]
-  }) %}
+Identifier ->
+  %identifier {% (d) => new IdentifierExpression(d[0].value) %}
 
 ValueExpr ->
   (CallExpr | CastExpr | DerefExpr | ValueLiteral)
@@ -147,20 +154,12 @@ ValueExpr ->
     {% dn(2) %}
 
 CastExpr ->
-  ValueExpr _ %colon _ TypeName
-    {% (d) => ({
-      "kind": ExpressionKind.Cast,
-      "lhs": d[0],
-      "rhs": d[4]
-    }) %}
+  Expr _ %colon _ Identifier
+    {% (d) => new CastExpression(d[4], d[0]) %}
 
 DerefExpr ->
-  ValueExpr _ %dot Identifier
-    {% (d) => ({
-      "kind": ExpressionKind.Dereference,
-      "lhs": d[0],
-      "rhs": d[3]
-    }) %}
+  DerefExpr _ %dot Identifier
+    {% (d) => new DereferenceExpression(d[0], d[3]) %}
   | Identifier
     {% id %}
 

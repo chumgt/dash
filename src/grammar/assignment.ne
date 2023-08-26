@@ -1,3 +1,6 @@
+@{%
+  import { AssignmentExpression } from "../expression";
+%}
 
 @lexer lex
 
@@ -29,24 +32,7 @@ AssignmentTarget ->
 #   } %}
 
 AssignExpr ->
-  AssignmentTarget _ (%colon %colon:? (_ TypeName _):?):? %eq _ Expr {% (d) => {
-    const token: any = ({
-      "kind": ExpressionKind.Assignment,
-      "lhs": d[0],
-      "rhs": d[5],
-      "type": d[4]?.[1]
-    });
-
-    if (d[2]) {
-      token["constant"] = !! (d[2][1]);
-      token["declaration"] = ({
-        type: d[2][2]?.[1]
-      });
-    }
-
-    return token;
-  } %}
-
-TypeName ->
-  ("any" | "function" | "number" | "string")
-    {% (d) => getTypeByName(d[0][0].value) %}
+  AssignmentTarget _ (%colon %colon:? (_ Identifier _):?):? %eq _ IfExpr
+    {% (d) => new AssignmentExpression(d[0], d[5], d[2]?.[2]?.[1]) %}
+  | IfExpr
+    {% id %}

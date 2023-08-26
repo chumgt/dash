@@ -1,5 +1,6 @@
 import { DashError } from "./error";
 import { State } from "./main";
+import { Vm } from "./vm";
 
 export type NativeFunction =
     (...args: Value[]) => Value | never;
@@ -40,6 +41,21 @@ export class Value {
     if (value === undefined || value === null)
       throw new DashError("null value");
     this._data = value;
+  }
+
+  public call(vm: Vm, args: Value[]): Value {
+    if (this.type !== Type.Function)
+      throw new DashError("value not callable");
+
+    if (args.length !== this.params.length)
+      throw new DashError(`expected ${this.params.length} args, received ${args.length}`);
+
+    const ctx = vm.save();
+    for (let i = 0; i < args.length; i++)
+      ctx.assign(this.params[i].name, args[i]);
+
+    // this.data
+    return {} as any // TODO
   }
 
   public cast(type: Type): Value | never {

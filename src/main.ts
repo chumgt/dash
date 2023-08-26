@@ -8,6 +8,7 @@ import { Type, Value } from "./data";
 import { DashError } from "./error";
 import { Expression, ExpressionKind } from "./expression";
 import * as data from "./data";
+import { Vm } from "./vm";
 
 const grammar = ne.Grammar.fromCompiled(require("./grammar/index"));
 
@@ -395,8 +396,10 @@ export function dostring(chunk: string, state = new State()): {ast: any, val: Va
   if ((!i) && (i=true))
     fs.writeFileSync("./ast.json", JSON.stringify(ast,null,2))
 
+  let vm = new Vm();
   for (let i = 0; i < ast.length; i++) {
-    ast[i] = resolve(ast[i], state);
+    // ast[i] = resolve(ast[i], state);
+    ast[i] = ast[i].visit(vm);
   }
 
   const res: Value = ast[ast.length - 1];

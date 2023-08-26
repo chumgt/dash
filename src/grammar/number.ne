@@ -2,7 +2,7 @@
   function basePrefixToBase(prefix) {
     switch (prefix[prefix.length - 1]) {
       case "b": return 2;
-      case "c": return 8;
+      case "o": return 8;
       case "x": return 16;
       default: return undefined;
     }
@@ -13,7 +13,7 @@
 
     switch (token.value.substring(0, 2)) {
       case "0b": return Number.parseInt(value, 2);
-      case "0c": return Number.parseInt(value, 8);
+      case "0o": return Number.parseInt(value, 8);
       case "0x": return Number.parseInt(value, 16);
     }
     return Number.parseInt(value, 10);
@@ -24,15 +24,7 @@
 
 Number ->
   (Float | Infinity | Integer)
-    {% dn(0, 0) %}
-  # TODO: Unary negation
-  # | %minus Number
-  #   {% (d) => {
-  #     const tok = Object.assign({}, d[1]);
-  #     tok.source.text = "-" + tok.source.text;
-  #     relocateSource(tok.source, d[0]);
-  #     return tok;
-  #   } %}
+    {% (d) => new expr.ValueExpression(Type.Number, d[0][0].value) %}
 
 Float ->
   %float
