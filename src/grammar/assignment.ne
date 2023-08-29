@@ -1,38 +1,16 @@
-@{%
-  import { AssignmentExpression } from "../expression";
-%}
 
 @lexer lex
 
 AssignmentTarget ->
-  (DerefExpr | Identifier)
-    {% dn(0, 0) %}
+  DerefExpr
+    {% dn(0) %}
+  | %lparen _ Expr _ %rparen
+    {% dn(2) %}
 
-# AssignExpr ->
-#   AssignmentTarget _ %equals _ Expr
-#     {% (d) => ({
-#       "kind": ExpressionKind.Assignment,
-#       "lhs": d[0],
-#       "rhs": d[4]
-#     }) %}
+DeclarationStmt ->
+  AssignmentTarget _ %colon %colon:? (_ TypeName):? _ %eq _ Expr
+    {% (d) => new expr.DeclarationExpression(d[0], d[8], d[4]?.[1]) %}
 
-# DeclareExpr ->
-#   AssignmentTarget _ %colon %colon:? (_ TypeName _):? %equals _ Expr {% (d) => {
-#     const token = ({
-#       "kind": ExpressionKind.Assignment,
-#       "lhs": d[0],
-#       "rhs": d[7],
-#       "declaration": true,
-#       "type": d[4]?.[1]
-#     });
-
-#     token["constant"] = !!d[3];
-
-#     return token;
-#   } %}
-
-AssignExpr ->
-  AssignmentTarget _ (%colon %colon:? (_ Identifier _):?):? %eq _ IfExpr
-    {% (d) => new AssignmentExpression(d[0], d[5], d[2]?.[2]?.[1]) %}
-  | IfExpr
-    {% id %}
+AssignmentExpr ->
+  AssignmentTarget _ %eq _ Expr
+    {% (d) => new expr.AssignmentExpression(d[0], d[4]) %}

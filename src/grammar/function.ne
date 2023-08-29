@@ -3,59 +3,43 @@
 
 ListOf[T, V] ->
   $V  {% (d) => [d[0]] %}
-  | $T _ %comma _ $V {% (d) => [...d[0], d[4]] %}
-
+  | $T _ %comma _ $V {% (d) => [...d[0][0], d[4]] %}
 
 CallExpr ->
   CallTarget _ %lparen _ ArgList:? _ %rparen
-    {% (d) => new CallExpression(d[0], d[4]) %}
-    # {% (d) => ({
-    #   "kind": ExpressionKind.Call,
-    #   "lhs": d[0],
-    #   "args": d[4] ?? []
-    # }) %}
+    {% (d) => new expr.CallExpression(d[0], d[4] ?? []) %}
 
 CallTarget ->
-  Function  {%id%}
-  | ValueExpr {%id%}
+  Expr {% id %}
 
 Function ->
-  "fn" _ %lparen _ ParamList:? _ %rparen (_ %colon _ TypeName):? _ %lbrace FunctionBody %rbrace
-    {% (d) => new FunctionExpression({
-      kind: ExpressionKind.Function,
-      body: d[10]
+  %kw_fn _ %lparen _ ParamList:? _ %rparen (_ %colon _ Identifier):? _ %lbrace _ FunctionBody _ %rbrace
+    {% (d) => new expr.FunctionExpression({
+      kind: expr.ExpressionKind.Function,
+      body: d[11],
+      params: d[4]??[]
     }) %}
-    # {% (d) => ({
-    #   "kind": ExpressionKind.Function,
-    #   "type": Type.Function,
-    #   "params": d[2] ?? [],
-    #   "returnType": d[5]?.[3] ?? Type.Any,
-    #   "body": d[8]
-    # }) %}
 
 FunctionBody ->
-  _ Expr _
-    {% (d) => [d[1]] %}
-  | FunctionBody _ %semi _ Expr _
-      {% (d) => [...d[0], d[4]] %}
-
-Arg ->
-  ValueExpr
-    {% id %}
+  (Stmt _ %semi _):* _ Expr
+    {% (d) => [...d[0].map(x => x[0]), d[2]] %}
 
 ArgList ->
-  Arg {% (d) => ([d[0]]) %}
+  Arg  {% (d) => [d[0]] %}
   | ArgList _ %comma _ Arg {% (d) => [...d[0], d[4]] %}
 
-ParamList ->
-  ListOf[ParamList, Param] {% id %}
+Arg ->
+  Expr
+    {% id %}
 
-# ParamList ->
-#   Param  {% (d) => [d[0]] %}
-#   | ParamList _ %comma _ Param  {% (d) => [...d[0], d[4]] %}
+ParamList ->
+  Param  {% (d) => [d[0]] %}
+  | ParamList _ %comma _ Param {% (d) => [...d[0], d[4]] %}
+  # ListOf[ParamList, Param] {% dn(0) %}
 
 Param ->
-  Identifier (_ %colon _ Identifier):? {% (d) => ({
+  Identifier (_ %colon _ Identifier):? (_ %eq _ Expr):? {% (d) => ({
     "name": d[0].value,
-    "type": d[1]?.[3] ?? Type.Any
+    "typedef": d[1]?.[3] ?? undefined,
+    "defaultValue": d[2]?.[3]
   }) %}

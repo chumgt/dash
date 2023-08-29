@@ -4,30 +4,26 @@
 
 @lexer lex
 
-ArithmeticExpr ->
-  AdditiveExpr
-    {% id %}
-
-UnaryExpr ->
-  %plus _ ArithmeticExpr
-    {% dn(2) %}
-  | %minus _ ArithmeticExpr
-    {% (d) => new expr.UnaryOpExpression(expr.UnaryOpKind.Negate, d[2]) %}
+ExponentialExpr ->
+  ValueExpr _ %power _ ExponentialExpr
+    {% (d) => new expr.BinaryOpExpression(expr.BinaryOpKind.Exponential, d[0], d[4]) %}
   | ValueExpr
     {% id %}
 
-ExponentialExpr ->
-  UnaryExpr _ %power _ ExponentialExpr
-    {% (d) => new expr.BinaryOpExpression(expr.BinaryOpKind.Exponential, d[0], d[4]) %}
-  | UnaryExpr
+UnaryExpr ->
+  %plus _ UnaryExpr
+    {% dn(2) %}
+  | %minus _ UnaryExpr
+    {% (d) => new expr.UnaryOpExpression(expr.UnaryOpKind.Negate, d[2]) %}
+  | ExponentialExpr
     {% id %}
 
 MultiplicativeExpr ->
-  MultiplicativeExpr _ %divide _ ExponentialExpr
+  MultiplicativeExpr _ %divide _ UnaryExpr
     {% (d) => new expr.BinaryOpExpression(expr.BinaryOpKind.Divide, d[0], d[4]) %}
-  | MultiplicativeExpr _ %times _ ExponentialExpr
+  | MultiplicativeExpr _ %times _ UnaryExpr
     {% (d) => new expr.BinaryOpExpression(expr.BinaryOpKind.Multiply, d[0], d[4]) %}
-  | ExponentialExpr
+  | UnaryExpr
     {% id %}
 
 AdditiveExpr ->

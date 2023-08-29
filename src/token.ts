@@ -1,5 +1,5 @@
 import { Type } from "./data";
-import { BinaryOpKind, ExpressionKind } from "./expression";
+import { BinaryOpKind, Expression, ExpressionKind, IdentifierExpression } from "./expression";
 
 export interface TokenSource {
   text: string;
@@ -31,12 +31,18 @@ export interface BinaryOpToken extends ExpressionToken {
 
 export interface FunctionExprToken extends ExpressionToken {
   body: ExpressionToken[];
-  // params: ExpressionToken[];
+  params: ParameterToken[];
   // returnType: ExpressionToken;
 }
 
 export interface ParameterToken extends Token {
+  name: string;
+  typedef?: IdentifierExpression;
+  defaultValue?: Expression;
+}
 
+export interface TypeToken extends Token {
+  records: [IdentifierExpression, IdentifierExpression][];
 }
 
 export interface UnaryOpToken extends ExpressionToken {

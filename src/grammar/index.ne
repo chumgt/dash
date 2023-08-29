@@ -1,20 +1,12 @@
 @{%
   import * as moo from "moo";
 
-  import { Type } from "../data";
   import { DashError } from "../error";
-  import {
-    CallExpression,
-    CastExpression,
-    DereferenceExpression,
-    ExpressionKind,
-    FunctionExpression,
-    IdentifierExpression,
-    ValueExpression,
-    ValueKind
-  } from "../expression";
+  import * as data from "../data";
   import * as expr from "../expression";
+  import * as node from "../node";
   import * as token from "../token";
+  import * as value from "../value";
 
   /** Returns a Nearley parser postprocess function which returns
    * `d[index0][index1][index2][...][indexN]`. */
@@ -34,21 +26,6 @@
     return from;
   }
 
-  function getTypeByName(name: string): Type {
-    switch (name) {
-      case "any":
-        return Type.Any;
-      case "function":
-        return Type.Function;
-      case "number":
-        return Type.Number;
-      case "string":
-        return Type.String;
-      default:
-        throw new DashError("Unknown type " + name);
-    }
-  }
-
   // Some tokens have `as any` because Nearley-to-Typescript doesn't like it otherwise.
   const lex = moo.compile({
     //comment: {
@@ -60,7 +37,10 @@
       match: /[a-zA-Z_][a-zA-Z0-9_]*/,
       type: moo.keywords({
         "kw_if": "if",
-        "kw_else": "else"
+        "kw_else": "else",
+        "kw_fn": "fn",
+        "kw_switch": "switch",
+        "kw_type": "type"
       })
     },
     float: /[0-9]+\.[0-9]+/,
@@ -110,11 +90,10 @@
   });
 %}
 
-# - Includes are relative to the *project* root.
+# `@include`s in this file are relative to the project root.
 
 @lexer lex
 @preprocessor typescript
-
 @builtin "whitespace.ne"
 @include "src/grammar/arithmetic.ne"
 @include "src/grammar/assignment.ne"
@@ -125,43 +104,71 @@
 @include "src/grammar/value.ne"
 
 Chunk ->
-  FunctionBody
-    {% id %}
+  _ FunctionBody _
+    {% (d) => new node.ChunkNode(d[1]) %}
+
+# Chunk ->
+#   _ Expr _
+#     {% (d) => new node.ChunkNode([d[1]]) %}
 
 Expr ->
-  AssignmentExpr {% id %}
-  # BinaryExpr  {% id %}
-  # | IfExpr    {% id %}
-  # | ValueExpr {% id %}
+  BinaryOpExpr {% id %}
+  | DerefExpr {% id %}
+  | IfExpr    {% id %}
+  | CallExpr  {% id %}
+  | CastExpr  {% id %}
+  | DerefExpr {% id %}
+  | SwitchExpr {% id %}
+  | TypeExpr  {% id %}
 
-BinaryExpr ->
-  AssignExpr {% id %}
-  | LogicalExpr {% id %}
+Stmt ->
+  DeclarationStmt  {% id %}
+  | AssignmentExpr {% id %}
+  | CallExpr {% id %}
+  | IfStmt   {% id %}
 
 IfExpr ->
-  Expr __ "if" __ Expr __ "else" __ Expr
+  Expr __ %kw_if __ LogicalOrExpr __ %kw_else __ Expr
     {% (d) => new expr.IfExpression(d[4], d[0], d[8]) %}
-  | Expr
-    {% id %}
 
-Identifier ->
-  %identifier {% (d) => new IdentifierExpression(d[0].value) %}
-
-ValueExpr ->
-  (CallExpr | CastExpr | DerefExpr | ValueLiteral)
-    {% dn(0, 0) %}
-  | %lparen _ Expr _ %rparen
-    {% dn(2) %}
+IfStmt ->
+  %kw_if __ Expr _ %lbrace _ FunctionBody _ %rbrace
+    {% (d) => new expr.IfStatement(d[2], d[6]) %}
 
 CastExpr ->
   Expr _ %colon _ Identifier
-    {% (d) => new CastExpression(d[4], d[0]) %}
+    {% (d) => new expr.CastExpression(d[4], d[0]) %}
 
 DerefExpr ->
   DerefExpr _ %dot Identifier
-    {% (d) => new DereferenceExpression(d[0], d[3]) %}
+    {% (d) => new expr.DereferenceExpression(d[0], d[3]) %}
   | Identifier
     {% id %}
+
+SwitchExpr ->
+  %kw_switch _ ValueExpr _ %lbrace _ SwitchBody _ %rbrace
+    {% (d) => new expr.SwitchExpression(d[2], d[6]) %}
+
+SwitchBody ->
+  SwitchCase
+    {% (d) => [d[0]] %}
+  | SwitchBody _ %comma _ SwitchCase
+    {% (d) => [...d[0], d[4]] %}
+
+SwitchCase ->
+  ValueExpr _ %minus %gt _ Expr
+    {% (d) => [d[0], d[5]] %}
+
+ValueExpr ->
+  %lparen _ Expr _ %rparen
+    {% dn(2) %}
+  | DerefExpr
+    {% id %}
+  | ValueLiteral
+    {% id %}
+
+Identifier ->
+  %identifier {% (d) => new expr.IdentifierExpression(d[0].value) %}
 
 ValueLiteral ->
   (Function | Number | String)

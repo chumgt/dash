@@ -24,45 +24,45 @@
 
 Number ->
   (Float | Infinity | Integer)
-    {% (d) => new expr.ValueExpression(Type.Number, d[0][0].value) %}
+    {% (d) => new expr.ValueExpression(data.Type.Number, d[0][0].value) %}
 
 Float ->
   %float
     {% (d) => ({
-      "kind": ExpressionKind.Number,
+      "kind": expr.ExpressionKind.Number,
       "constant": true,
       "format": "float",
-      "type": Type.Number,
+      "type": data.Type.Number,
       "value": Number.parseFloat(d[0].value),
       source: d[0]
     }) %}
 
 Integer ->
   %base2 {% (d) => ({
-      "kind": ExpressionKind.Number,
+      "kind": expr.ExpressionKind.Number,
       "constant": true,
       "format": "base2",
       "value": getNumberTokenValue(d[0]),
       source: d[0] }) %}
   | %base8 {% (d) => ({
-      "kind": ExpressionKind.Number,
+      "kind": expr.ExpressionKind.Number,
       "constant": true,
       "format": "base8",
       "value": getNumberTokenValue(d[0]),
       source: d[0]
     }) %}
   | %base16 {% (d) => ({
-      "kind": ExpressionKind.Number,
+      "kind": expr.ExpressionKind.Number,
       "constant": true,
       "format": "base16",
       "value": getNumberTokenValue(d[0]),
       source: d[0]
     }) %}
   | %base10 {% (d) => ({
-      "kind": ExpressionKind.Number,
+      "kind": expr.ExpressionKind.Number,
       "constant": true,
       "format": "base10",
-      "type": Type.Number,
+      "type": data.Type.Number,
       "value": Number.parseInt(d[0].value, 10),
       source: d[0]
     }) %}
@@ -70,7 +70,7 @@ Integer ->
 Infinity ->
   %infinity
     {% (d) => ({
-      "kind": ExpressionKind.Number,
+      "kind": expr.ExpressionKind.Number,
       "constant": true,
       "value": Number.POSITIVE_INFINITY,
       source: d[0]
