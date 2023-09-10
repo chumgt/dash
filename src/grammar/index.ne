@@ -1,12 +1,9 @@
 @{%
   import * as moo from "moo";
-
-  import { DashError } from "../error";
   import * as data from "../data";
   import * as expr from "../expression";
   import * as node from "../node";
-  import * as token from "../token";
-  import * as value from "../value";
+  import * as stmt from "../statement";
 
   /** Returns a Nearley parser postprocess function which returns
    * `d[index0][index1][index2][...][indexN]`. */
@@ -38,17 +35,30 @@
       type: moo.keywords({
         "kw_if": "if",
         "kw_else": "else",
+        "kw_export": "export",
         "kw_fn": "fn",
         "kw_switch": "switch",
         "kw_type": "type"
       })
     },
-    float: /[0-9]+\.[0-9]+/,
-    base2: /0b[0-1]+/,
-    base8: /0o[0-7]+/,
-    base16: /0x[0-9A-Fa-f]+/,
+    float: {
+      match: /[0-9]+\.[0-9]+/,
+      value: (x) => Number.parseFloat(x) as any
+    },
+    base2: {
+      match: /0b[0-1]+/,
+      value: (x) => Number.parseInt(x.substring(2), 2) as any
+    },
+    base8: {
+      match: /0o[0-7]+/,
+      value: (x) => Number.parseInt(x.substring(2), 8) as any
+    },
+    base16: {
+      match: /0x[a-fA-F0-9]+/,
+      value: (x) => Number.parseInt(x.substring(2), 16) as any
+    },
     base10: {
-      match: /0|[1-9][0-9]*/ as any,
+      match: /0|[1-9][0-9]*/,
       value: (x) => Number.parseInt(x, 10) as any
     },
     string: {
@@ -81,10 +91,17 @@
     lparen: "(",
     rparen: ")",
 
+    // fslash: "/",
+    // bslash: "\\",
+
     infinity: "\u221E",
 
+    comment: {
+      match: /#[^\n]*/,
+      value: (s) => s.substring(1)
+    },
     ws: {
-      match: /[ \n\t]+/,
+      match: /[ \t\n\v\f]+/,
       lineBreaks: true
     }
   });
@@ -94,7 +111,6 @@
 
 @lexer lex
 @preprocessor typescript
-@builtin "whitespace.ne"
 @include "src/grammar/arithmetic.ne"
 @include "src/grammar/assignment.ne"
 @include "src/grammar/function.ne"
@@ -102,38 +118,59 @@
 @include "src/grammar/number.ne"
 @include "src/grammar/operator.ne"
 @include "src/grammar/value.ne"
+@include "src/grammar/whitespace.ne"
 
 Chunk ->
-  _ FunctionBody _
-    {% (d) => new node.ChunkNode(d[1]) %}
+  _ (Expr | ModuleBlock) _
+    {% dn(1, 0) %}
 
-# Chunk ->
-#   _ Expr _
-#     {% (d) => new node.ChunkNode([d[1]]) %}
+ModuleBlock ->
+  ModuleBody
+    {% (d) => new node.ModuleNode(d[0]) %}
+
+ModuleBody ->
+  ModuleStmt _ %semi
+    {% (d) => [d[0]] %}
+  | ModuleBody _ ModuleStmt _ %semi
+    {% (d) => [...d[0], d[2]] %}
+
+Proc ->
+  ProcBody
+    {% (d) => new node.ProcedureBlock(d[0]) %}
+
+ProcBody ->
+  Stmt _ %semi
+    {% (d) => [d[0]] %}
+  | Proc _ Stmt _ %semi
+    {% (d) => [...d[0], d[2]] %}
 
 Expr ->
   BinaryOpExpr {% id %}
-  | DerefExpr {% id %}
-  | IfExpr    {% id %}
-  | CallExpr  {% id %}
-  | CastExpr  {% id %}
-  | DerefExpr {% id %}
+  | CastExpr   {% id %}
+  | IfExpr     {% id %}
   | SwitchExpr {% id %}
-  | TypeExpr  {% id %}
+  | TypeExpr   {% id %}
+
+ModuleStmt ->
+  ExportStmt {% id %}
+  | Stmt     {% id %}
 
 Stmt ->
-  DeclarationStmt  {% id %}
-  | AssignmentExpr {% id %}
+  AssignmentStmt  {% id %}
   | CallExpr {% id %}
   | IfStmt   {% id %}
 
+ExportStmt ->
+  %kw_export __ DeclarationStmt
+    {% (d) => new stmt.ExportStatement(d[2]) %}
+
 IfExpr ->
-  Expr __ %kw_if __ LogicalOrExpr __ %kw_else __ Expr
+  ValueExpr __ %kw_if __ LogicalOrExpr __ %kw_else __ ValueExpr
     {% (d) => new expr.IfExpression(d[4], d[0], d[8]) %}
 
 IfStmt ->
-  %kw_if __ Expr _ %lbrace _ FunctionBody _ %rbrace
-    {% (d) => new expr.IfStatement(d[2], d[6]) %}
+  %kw_if __ Expr _ %lbrace _ Proc _ %rbrace (_ %kw_else _ %lbrace _ Proc _ %rbrace):?
+    {% (d) => new stmt.IfStatement(d[2], d[6], d[9]?.[5]) %}
 
 CastExpr ->
   Expr _ %colon _ Identifier
@@ -160,16 +197,22 @@ SwitchCase ->
     {% (d) => [d[0], d[5]] %}
 
 ValueExpr ->
-  %lparen _ Expr _ %rparen
-    {% dn(2) %}
-  | DerefExpr
-    {% id %}
-  | ValueLiteral
-    {% id %}
+  %lparen _ Expr _ %rparen  {% dn(2) %}
+  | CallExpr     {% id %}
+  | DerefExpr    {% id %}
+  | ValueLiteral {% id %}
 
 Identifier ->
   %identifier {% (d) => new expr.IdentifierExpression(d[0].value) %}
 
 ValueLiteral ->
-  (Function | Number | String)
-    {% dn(0, 0) %}
+  Function {% id %}
+  | Number {% id %}
+  | String {% id %}
+
+# Comment ->
+#   %comment
+#     {% (d) => null %}
+# Comment ->
+#   %fslash %times %times %fslash
+#     {% () => null %}

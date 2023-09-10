@@ -1,14 +1,12 @@
 {
   "compilerOptions": {
-    "moduleResolution": "Node",
-    "module": "CommonJS",
-    "target": "ES2022",
+    "moduleResolution": "NodeNext",
+    "target": "ESNext",
 
     "allowJs": true,
     "esModuleInterop": true,
     "experimentalDecorators": true,
     "resolveJsonModule": true,
-    "declaration": true,
     "importHelpers": true,
 
     // "strict": true,
@@ -16,8 +14,8 @@
     "noImplicitOverride": true
   },
   "include": [
-    "src/**/*.js",
-    "src/**/*.json",
-    "src/**/*.ts"
+    "./src/**/*.js",
+    "./src/**/*.json",
+    "./src/**/*.ts"
   ]
 }

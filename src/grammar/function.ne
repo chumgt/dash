@@ -1,28 +1,25 @@
 
 @lexer lex
 
-ListOf[T, V] ->
-  $V  {% (d) => [d[0]] %}
-  | $T _ %comma _ $V {% (d) => [...d[0][0], d[4]] %}
-
 CallExpr ->
   CallTarget _ %lparen _ ArgList:? _ %rparen
     {% (d) => new expr.CallExpression(d[0], d[4] ?? []) %}
 
 CallTarget ->
-  Expr {% id %}
+  DerefExpr {% id %}
 
 Function ->
-  %kw_fn _ %lparen _ ParamList:? _ %rparen (_ %colon _ Identifier):? _ %lbrace _ FunctionBody _ %rbrace
+  %kw_fn _ %lparen _ ParamList:? _ %rparen (_ %colon _ Identifier):? _ %lbrace _ FunctionBlock _ %rbrace
     {% (d) => new expr.FunctionExpression({
       kind: expr.ExpressionKind.Function,
-      body: d[11],
-      params: d[4]??[]
+      block: d[11],
+      params: d[4] ?? [],
+      returnType: d[7]?.[3]
     }) %}
 
-FunctionBody ->
-  (Stmt _ %semi _):* _ Expr
-    {% (d) => [...d[0].map(x => x[0]), d[2]] %}
+FunctionBlock ->
+  ProcBody:? _ Expr
+    {% (d) => new node.FunctionBlock(d[0] ?? [], d[2]) %}
 
 ArgList ->
   Arg  {% (d) => [d[0]] %}
@@ -35,11 +32,11 @@ Arg ->
 ParamList ->
   Param  {% (d) => [d[0]] %}
   | ParamList _ %comma _ Param {% (d) => [...d[0], d[4]] %}
-  # ListOf[ParamList, Param] {% dn(0) %}
 
 Param ->
-  Identifier (_ %colon _ Identifier):? (_ %eq _ Expr):? {% (d) => ({
-    "name": d[0].value,
-    "typedef": d[1]?.[3] ?? undefined,
-    "defaultValue": d[2]?.[3]
-  }) %}
+  Identifier (_ %colon _ Identifier):? (_ %eq _ Expr):?
+    {% (d) => ({
+      "name": d[0].value,
+      "typedef": d[1]?.[3] ?? undefined,
+      "defaultValue": d[2]?.[3]
+    }) %}

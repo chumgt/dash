@@ -1,13 +1,11 @@
 
 @lexer lex
-@include "./number.ne"
 
 String ->
-  %string
-    {% (d) => new expr.ValueExpression(
-      data.Type.String,
-      JSON.parse("\""+d[0].value+"\""))
-    %}
+  %string {% (d) => new expr.ValueExpression({
+    ...d[0],
+    "type": data.DatumType.String
+  }) %}
 
 TypeExpr ->
   %kw_type _ %lbrace (_ Identifier _ %colon _ Identifier):* _ %rbrace

@@ -1,5 +1,6 @@
-import { Type } from "./data";
+import { DatumType } from "./data";
 import { BinaryOpKind, Expression, ExpressionKind, IdentifierExpression } from "./expression";
+import { FunctionBlock } from "./node";
 
 export interface TokenSource {
   text: string;
@@ -30,9 +31,9 @@ export interface BinaryOpToken extends ExpressionToken {
 }
 
 export interface FunctionExprToken extends ExpressionToken {
-  body: ExpressionToken[];
+  block: FunctionBlock;
   params: ParameterToken[];
-  // returnType: ExpressionToken;
+  returnType: ExpressionToken;
 }
 
 export interface ParameterToken extends Token {
@@ -51,8 +52,17 @@ export interface UnaryOpToken extends ExpressionToken {
 
 /// Literal values.
 export interface ValueToken extends ExpressionToken {
-  type: Type;
+  type: DatumType;
   value: any;
+}
+
+export interface NumberValueToken extends ValueToken {
+  value: number;
+  base: number;
+}
+
+export interface StringValueToken extends ValueToken {
+  value: string;
 }
 
 export function newToken<T extends Token>(token: T): T {

@@ -1,10 +1,10 @@
 import { DashError } from "./error";
-import { AssignmentTarget, Node } from "./node";
-import { AssignmentExprToken, ExpressionToken, FunctionExprToken, ParameterToken, Token, TypeToken, ValueToken } from "./token";
+import { AssignmentTarget,  FunctionBlock,  Node, NodeKind, Visitor } from "./node";
+import { FunctionExprToken, ParameterToken, TypeToken, ValueToken } from "./token";
 import { Type } from "./type";
-import { Value } from "./value";
+import { FunctionValue, NativeFunctionValue, Value } from "./value";
 import { Vm } from "./vm";
-import * as data from "./data";
+import * as types from "./type";
 
 export enum ExpressionKind {
   /* TODO: These are strings for development as it makes it easier to read the
@@ -39,6 +39,7 @@ export enum ExpressionKind {
   Switch = "Switch",
 
   Assignment = "Assignment",
+  DestrAssignment = "DestrAssignment",
   Declaration = "Dec",
   Dereference = "Dereference",
   Call = "Call",
@@ -52,7 +53,7 @@ export enum ExpressionKind {
   UnaryOp = "UnaryOp"
 }
 
-export enum BinaryOpKind {
+export const enum BinaryOpKind {
   Concat,
   Dereference,
   Multiply,
@@ -71,7 +72,7 @@ export enum BinaryOpKind {
   Or
 }
 
-export enum UnaryOpKind {
+export const enum UnaryOpKind {
   Negate
 }
 
@@ -80,63 +81,11 @@ export enum ValueKind {
   String
 }
 
-export interface ExpressionTypeMap extends Record<ExpressionKind, Expression> {
-  [ExpressionKind.Assignment]: AssignmentExpression;
-  [ExpressionKind.Value]: ValueExpression;
-}
-
-export interface TokenTypeMap extends Record<ExpressionKind, ExpressionToken> {
-  [ExpressionKind.Assignment]: AssignmentExprToken;
-  [ExpressionKind.Value]: ValueToken;
-}
-
-// export class ExpressionBuilder {
-//   public build<K extends keyof TokenTypeMap>(token: TokenTypeMap[K]): ExpressionTypeMap[K];
-//   public build(token: Token): Expression;
-//   public build(token: ExpressionToken): Expression {
-//     switch (token.kind) {
-//       case ExpressionKind.Assignment: {
-//         const as = token as AssignmentExprToken;
-//         const expr = new AssignmentExpression(
-//             this.build(as.lhs) as any,
-//             this.build(as.rhs));
-//         if (as.typedef)
-//           expr.type = this.build(as.typedef);
-//         return expr;
-//       }
-//     }
-
-//     throw new Error(`Unknown token kind ${token.kind}`);
-//   }
-// }
-
 export abstract class Expression extends Node {
-  public constructor(public kind: ExpressionKind) {
-    super();
+  public constructor(public type: ExpressionKind) {
+    super(NodeKind.Expression);
   }
   public abstract evaluate(vm: Vm): Value;
-}
-
-export class AssignmentExpression extends Expression {
-  public static readonly FLAG_DECLARE = 1 << 0;
-  target: AssignmentTarget;
-  value: Expression;
-
-  public constructor(target: AssignmentTarget, value: Expression,
-      public flags: number = 0) {
-    super(ExpressionKind.Assignment);
-    this.target = target;
-    this.value = value;
-  }
-
-  public override evaluate(vm: Vm): Value {
-    const key = this.target.getKey();
-    if ((this.flags & AssignmentExpression.FLAG_DECLARE) && vm.has(key))
-      throw new DashError(`var ${key} already defined`);
-    const value = this.value.evaluate(vm);
-    this.target.assign(value, vm);
-    return value;
-  }
 }
 
 export class BinaryOpExpression extends Expression {
@@ -153,50 +102,12 @@ export class BinaryOpExpression extends Expression {
 
   public override evaluate(vm: Vm): Value {
     const lhs = this.lhs.evaluate(vm);
+    const fn = lhs.type.getOperator(this.op);
+    if (! fn)
+      throw new DashError(`cannot do op ${this.op} on type ${lhs.type.name}`);
+
     const rhs = this.rhs.evaluate(vm);
-    if (this.op === BinaryOpKind.Concat) {
-      return new Value(data.Type.String, String(lhs.data) + String(rhs.data));
-    }
-    else if ([BinaryOpKind.Add, BinaryOpKind.Divide, BinaryOpKind.Exponential, BinaryOpKind.Multiply, BinaryOpKind.Subtract].includes(this.op)) {
-      if (lhs.type !== rhs.type)
-        throw new DashError(`cannot do ${this.op} on ${lhs.type} and ${rhs.type}`);
-
-      switch (this.op) {
-        case BinaryOpKind.Add:
-          return new Value(data.Type.Number, lhs.data + rhs.data);
-        case BinaryOpKind.Divide:
-          return new Value(data.Type.Number, lhs.data / rhs.data);
-        case BinaryOpKind.Exponential:
-          return new Value(data.Type.Number, lhs.data ** rhs.data);
-        case BinaryOpKind.Multiply:
-          return new Value(data.Type.Number, lhs.data * rhs.data);
-        case BinaryOpKind.Subtract:
-          return new Value(data.Type.Number, lhs.data - rhs.data);
-        default:
-          throw new DashError("unknown arithmetic operator");
-      }
-    }
-    else if ([BinaryOpKind.EQ, BinaryOpKind.NEQ, BinaryOpKind.GT, BinaryOpKind.GEQ, BinaryOpKind.LT, BinaryOpKind.LEQ].includes(this.op)) {
-      if (lhs.type !== rhs.type)
-        throw new DashError(`cannot do ${this.op} on ${lhs.type} and ${rhs.type}`);
-
-      switch (this.op) {
-        case BinaryOpKind.GT:
-          return new Value(data.Type.Number, lhs.data > rhs.data ? 1 : 0);
-        case BinaryOpKind.GEQ:
-          return new Value(data.Type.Number, lhs.data >= rhs.data ? 1 : 0);
-        case BinaryOpKind.LT:
-          return new Value(data.Type.Number, lhs.data < rhs.data ? 1 : 0);
-        case BinaryOpKind.LEQ:
-          return new Value(data.Type.Number, lhs.data <= rhs.data ? 1 : 0);
-        case BinaryOpKind.EQ:
-          return new Value(data.Type.Number, lhs.data === rhs.data ? 1 : 0);
-        case BinaryOpKind.NEQ:
-          return new Value(data.Type.Number, lhs.data !== rhs.data ? 1 : 0);
-      }
-    }
-
-    throw new Error("unknown op");
+    return fn(lhs, rhs);
   }
 }
 
@@ -212,9 +123,11 @@ export class UnaryOpExpression extends Expression {
 
   public override evaluate(vm: Vm): Value {
     const rhs = this.rhs.evaluate(vm);
-    if (rhs.type !== data.Type.Number)
-      throw new DashError("value is not a number");
-    return new Value(data.Type.Number, -rhs.data);
+    const fn = rhs.type.getOperator(UnaryOpKind.Negate);
+    if (! fn)
+      throw new DashError(`cannot do op ${this.op} on type ${rhs.type.name}`);
+
+    return fn(rhs);
   }
 }
 
@@ -228,49 +141,40 @@ export class CallExpression extends Expression {
     this.args = args;
   }
 
+  public apply(vm: Vm): void {
+    this.evaluate(vm);
+  }
+
   public override evaluate(vm: Vm): Value {
     const target = this.target.evaluate(vm);
-    if (target.type !== data.Type.Function)
+    if (target.type !== types.FUNCTION)
       throw new DashError("target is not callable");
-    // const args = this.args.map(x => x.apply(vm));
-    const args = mapArgsToParams(this.args, target.params)
-    //     .map(x => x.apply(vm));
-    // return target.data(args);
-    return target.data(args)
+    if (target instanceof FunctionValue || target instanceof NativeFunctionValue) {
+      const args = (target.params)
+          ? mapArgsToParams(this.args, target.params)
+          : this.args;
+      return target.call(vm, args);
+    } else {
+      return target.data(this.args.map(x => x.evaluate(vm)));
+    }
   }
 }
 
 export class CastExpression extends Expression {
-  type: Expression;
-  value: Expression;
-
-  public constructor(type: Expression, value: Expression) {
+  public constructor(
+      public typeDef: Expression,
+      public value: Expression) {
     super(ExpressionKind.Cast);
-    this.type = type;
-    this.value = value;
   }
 
   public override evaluate(vm: Vm): Value {
-    const type = this.type.evaluate(vm);
-    if (type.type !== data.Type.Type)
+    const type = this.typeDef.evaluate(vm);
+    if (! type.type.extends(types.TYPE))
       throw new DashError("cast to non-type");
 
     const value = this.value.evaluate(vm);
-    return vm.cast(value, type.data);
-  }
-}
-
-export class DeclarationExpression extends AssignmentExpression {
-  public constructor(target: AssignmentTarget, value: Expression,
-      public type?: Expression) {
-    super(target, value);
-    this.kind = ExpressionKind.Declaration;
-  }
-
-  public override evaluate(vm: Vm): Value {
-    const value = this.value.evaluate(vm);
-    this.target.assign(value, vm);
-    return value;
+    throw new DashError("no casting!")
+    // return vm.cast(value, type);
   }
 }
 
@@ -284,13 +188,15 @@ implements AssignmentTarget {
 
   public override evaluate(vm: Vm): Value {
     const lhs = this.lhs.evaluate(vm);
-    // const rhs = this.rhs.apply(vm);
+    if (! lhs.properties)
+      throw new DashError("type is not assignable");
     return lhs.properties[this.rhs.value];
   }
 
   public assign(value: Value, vm: Vm): void {
     const lhs = this.lhs.evaluate(vm);
-    // const rhs = this.rhs.apply(vm);
+    if (! lhs.properties)
+      throw new DashError("type is not assignable");
     lhs.properties[this.rhs.value] = value;
   }
 
@@ -300,48 +206,19 @@ implements AssignmentTarget {
 }
 
 export class FunctionExpression extends Expression {
-  body: Expression[];
+  block: FunctionBlock;
   params: ParameterToken[];
   private context: Vm;
 
   public constructor(token: FunctionExprToken) {
     super(ExpressionKind.Function);
-    this.body = token.body as Expression[];
+    this.block = token.block;
     this.params = token.params;
   }
 
   public override evaluate(vm: Vm): Value {
-    const context = vm.save();
-    const val = new Value(data.Type.Function, (args: Expression[]) => {
-      return this.call(context, args);
-    });
-    val.params = this.params;
+    const val = new FunctionValue(this.params, this.block, vm);
     return val;
-  }
-
-  public call(vm: Vm, args: Expression[]): Value {
-    if (! Array.isArray(args))
-      throw new DashError(`expected args array, received ${typeof args}`);
-    if (args.length !== this.params.length)
-      throw new DashError("incorrect arg count");
-
-    for (let i = 0; i < args.length; i++) {
-      const arg = args[i].evaluate(vm);
-      const param = this.params[i];
-
-      if (param.typedef) {
-        const expectedType = param.typedef?.evaluate(vm);
-        if (! (arg.type & expectedType.type))
-          throw new DashError(`arg ${i}: expected ${expectedType.type}, received ${arg.type}`);
-      }
-
-      vm.assign(param.name, arg);
-    }
-
-    let result: Value;
-    for (let expr of this.body)
-      result = expr.evaluate(vm);
-    return result!;
   }
 }
 
@@ -383,25 +260,6 @@ export class IfExpression extends Expression {
   }
 }
 
-export class IfStatement extends Expression {
-  public constructor(
-      public condition: Expression,
-      public body: Expression[]) {
-    super(ExpressionKind.If);
-  }
-
-  public override evaluate(vm: Vm): Value {
-    const cond = this.condition.evaluate(vm);
-    if (cond.data) {
-      let result: Value;
-      for (let expr of this.body)
-        result = expr.evaluate(vm);
-      return result!; // Parser won't allow void in this context.
-    }
-    return null as any; // This will never actually be used. see prev comment.
-  }
-}
-
 export class SwitchExpression extends Expression {
   public constructor(
       public test: Expression,
@@ -426,22 +284,21 @@ export class TypeExpression extends Expression {
   }
 
   public override evaluate(vm: Vm): Value {
-    return new Value(data.Type.Type, new Type());
+    return new Value(types.TYPE, new Type());
   }
 }
 
 export class ValueExpression extends Expression {
-  type: data.Type;
-  value: any;
-
-  public constructor(type: data.Type, value: any) {
+  public constructor(public token: ValueToken) {
     super(ExpressionKind.Value);
-    this.type = type;
-    this.value = value;
   }
 
   public override evaluate(vm: Vm): Value {
-    return new Value(this.type, this.value);
+    return vm.newValue(this.token.type, this.token.value);
+  }
+
+  public override accept(visitor: Visitor<this>): void {
+    visitor.visit(this);
   }
 }
 
@@ -473,7 +330,6 @@ export function getExpectedArgCount(params: ParameterToken[]): [number, number] 
   let lower = 0,
       upper = 0;
   let isOptional = false;
-  // for (let i = 0; )
   for (let param of params) {
     upper += 1;
     if (param.defaultValue) {

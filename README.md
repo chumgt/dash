@@ -1,40 +1,51 @@
+<style>
+code { font-family: "Comic Sans MS"; }
+</style>
 
 # Dash
 
-A strongly-typed, interpreted scripting language.
+An experimental interpreted scripting language.
+
+```lua
+print("Hello, world!");
+```
 
 ## Features
 
-```lua
-io ::= import("dash:io");
-io.write(("Hello, world!"));
-0
-```
-
-* Static typing.
-
-* Everything is an expression.
-* Every expression returns a value.
+* (_Almost_) Everything is an expression.
+* Expressions can be treated as values.
 * Every value has a type.
 * Every type is a value.
-* Null-less. There is no `null`/`nullptr`/`nil`/`undefined`/`None`/`Nothing`/
-  `void`.
+* There is no `null`/`nullptr`/`nil`/`undefined`/`None`/`Nothing`/`void`. This
+  feature could save your company a billion dollars.
 * Closures.
+
+Dash is great for evaluating expressions, summing numbers, and printing hello
+world to the console.
 
 ## Build & Test
 
 ```sh
 npm install
-npx gulp build
+npx gulp
 
 npm test
 ```
 
 ## Known Issues
 
-* Strings cannot contain spaces when passed as arguments, unless the strings is
-  enclosed in its own parentheses. `" "` works fine. I have no idea why. This
-  issue is high priority. Parsing strings is *hard*.
+* Type casting is not enabled nor implicit. Integer literals are `int32`,
+  float literals `float32`, string literals `string`. So it's only possible to
+  use those types.
+  All of the types are instances of `Type` and are implemented in a way that
+  makes them easiest to use with `Vm`, which means it's actually quite terrible.
+  Types are also checked at runtime, basically avoiding the entire point of
+  **static** type checking, which is just silly.
 
-* It's slow. Parsing and executing a minimal "Hello world"
-  program (which imports `io`) takes 118ms on my machine.
+* Tests are outdated.
+
+* README does not contain enough emoji 💀
+
+## License
+
+MIT License. Read the LICENSE file.
