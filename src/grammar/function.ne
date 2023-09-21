@@ -1,42 +1,47 @@
-
-@lexer lex
-
-CallExpr ->
-  CallTarget _ %lparen _ ArgList:? _ %rparen
-    {% (d) => new expr.CallExpression(d[0], d[4] ?? []) %}
-
-CallTarget ->
-  DerefExpr {% id %}
+@lexer lexer
 
 Function ->
-  %kw_fn _ %lparen _ ParamList:? _ %rparen (_ %colon _ Identifier):? _ %lbrace _ FunctionBlock _ %rbrace
+  %kw_fn _ %lparen _ ParamList _ %rparen (_ %colon _ Primary):? _ FunctionBody
     {% (d) => new expr.FunctionExpression({
       kind: expr.ExpressionKind.Function,
-      block: d[11],
-      params: d[4] ?? [],
+      block: d[9],
+      params: d[4],
       returnType: d[7]?.[3]
     }) %}
 
-FunctionBlock ->
-  ProcBody:? _ Expr
-    {% (d) => new node.FunctionBlock(d[0] ?? [], d[2]) %}
+FunctionDecl ->
+  Identifier _ %lparen _ ParamList _ %rparen (_ %colon _ Primary):? _ FunctionBody
+    {% (d) => new stmt.FunctionDeclaration(d[0], d[4], d[9], d[7]?.[3]) %}
+
+FunctionBody ->
+  BlockExpr
+    {% id %}
+  | %eq _ ReturnExpr
+    {% nth(2) %}
 
 ArgList ->
   Arg  {% (d) => [d[0]] %}
   | ArgList _ %comma _ Arg {% (d) => [...d[0], d[4]] %}
+  | null {% () => [] %}
 
 Arg ->
-  Expr
+  ReturnExpr
     {% id %}
 
 ParamList ->
   Param  {% (d) => [d[0]] %}
   | ParamList _ %comma _ Param {% (d) => [...d[0], d[4]] %}
+  | null {% () => [] %}
 
 Param ->
-  Identifier (_ %colon _ Identifier):? (_ %eq _ Expr):?
+  ParamSig (_ %eq _ Expr):?
+    {% (d) => Object.assign({
+      "defaultValue": d[1]?.[3]
+    }, d[0]) %}
+
+ParamSig ->
+  Identifier (_ %colon _ Identifier):?
     {% (d) => ({
       "name": d[0].value,
-      "typedef": d[1]?.[3] ?? undefined,
-      "defaultValue": d[2]?.[3]
+      "typedef": d[1]?.[3]
     }) %}

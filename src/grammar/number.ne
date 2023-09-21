@@ -1,5 +1,5 @@
 
-@lexer lex
+@lexer lexer
 
 Number ->
   (Float | Integer)

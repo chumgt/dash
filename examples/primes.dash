@@ -1,0 +1,21 @@
+iters ::= import("dash:iter");
+
+sieve(n: int32) {
+  multiples := array();
+  primes := array();
+
+  for i in iters.range(2, n + 1, 1) {
+    if !multiples.has(i) {
+      primes = primes.add(i);
+      for j in iters.range(i**2, n + 1, i) {
+        multiples = multiples.add(j);
+      };
+    };
+  };
+
+  primes
+};
+
+for i in iters.values(sieve(100)) {
+  write(i, "\n");
+};

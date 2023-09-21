@@ -1,22 +1,18 @@
-
-@lexer lex
+@lexer lexer
 
 AssignmentStmt ->
-  (DeclarationStmt | DestrAssignmentStmt | ReassignmentStmt)
-    {% dn(0, 0) %}
-
-AssignmentTarget ->
-  DerefExpr
-    {% dn(0) %}
-  | %lparen _ Expr _ %rparen
-    {% dn(2) %}
+  DeclarationStmt       {% id %}
+  | DestrAssignmentStmt {% id %}
+  | ReassignmentStmt    {% id %}
 
 DeclarationStmt ->
-  AssignmentTarget _ %colon %colon:? (_ DerefExpr):? _ %eq _ Expr
+  Identifier _ %colon %colon:? (_ Primary):? _ %eq _ ReturnExpr
     {% (d) => new stmt.DeclarationStatement(d[0], d[8], d[4]?.[1]) %}
+  | FunctionDecl
+    {% id %}
 
 ReassignmentStmt ->
-  AssignmentTarget _ %eq _ Expr
+  Deref _ %eq _ Expr
     {% (d) => new stmt.AssignmentStatement(d[0], d[4]) %}
 
 DestrAssignmentStmt ->

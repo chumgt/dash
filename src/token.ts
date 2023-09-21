@@ -1,6 +1,5 @@
 import { DatumType } from "./data";
 import { BinaryOpKind, Expression, ExpressionKind, IdentifierExpression } from "./expression";
-import { FunctionBlock } from "./node";
 
 export interface TokenSource {
   text: string;
@@ -18,6 +17,8 @@ export interface ExpressionToken extends Token {
   kind: ExpressionKind;
 }
 
+export interface StatementToken extends Token { }
+
 export interface AssignmentExprToken extends ExpressionToken {
   lhs: ExpressionToken;
   rhs: ExpressionToken;
@@ -30,8 +31,15 @@ export interface BinaryOpToken extends ExpressionToken {
   rhs: ExpressionToken;
 }
 
+export interface FunctionDeclToken extends StatementToken {
+  identifier: IdentifierExpression;
+  block: Expression;
+  params: ParameterToken[];
+  returnType: ExpressionToken;
+}
+
 export interface FunctionExprToken extends ExpressionToken {
-  block: FunctionBlock;
+  block: Expression;
   params: ParameterToken[];
   returnType: ExpressionToken;
 }
@@ -40,6 +48,11 @@ export interface ParameterToken extends Token {
   name: string;
   typedef?: IdentifierExpression;
   defaultValue?: Expression;
+}
+
+export interface SwitchBlockToken extends Token {
+  cases: [Expression, Expression][];
+  defaultCase?: Expression;
 }
 
 export interface TypeToken extends Token {

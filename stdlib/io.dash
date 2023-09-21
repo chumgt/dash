@@ -1,4 +1,0 @@
-
-write ::= __native__(("./../stdlib/builtin"), ("write"));
-
-0

@@ -1,14 +1,26 @@
+export E  :: float32 = 2.718281828459045;
+export PI :: float32 = 3.141592653589793;
 
-E  :: number = 2.718281828459045;
-PI :: number = 3.141592653589793;
+export INF ::= 1 / 0;
+export NAN ::= 0 / 0;
 
-INF :: number = 1 / 0;
-NAN :: number = 0 / 0;
+export is_finite(x) = x!=INF && x!=-INF && x!=NAN;
+export is_int(x) = is_finite(x) && mod(x, 1) == 0;
+export is_nan(x) = x != x;
 
-random ::= __native__(("./../stdlib/builtin"), ("random"));
+export abs(x) = x if x >= 0 else -x;
+export sign(x) = 0 if x == 0 else 1 if x > 0 else -1;
 
-is_finite ::= (x: number): number {
-  x != INF && x != 0-INF
-};
+export ceil(x) = x if mod(x, 1) == 0 else floor(x + 1);
+export floor(x) = x if is_int(x) else trunc(x if x > 0 else x-1);
+export round(x) = floor(x + 0.5);
+export trunc(x) = x - mod(x, 1);
 
-0
+export max(a, b) = a if a >= b else b;
+export min(a, b) = a if a <= b else b;
+
+export random ::= native.random;
+export random_int(lower, upper): int32 =
+  round(lower + (upper - lower) * random());
+
+export fact(x) = 1 if x <= 1 else x * fact(x - 1);

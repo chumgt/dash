@@ -1,4 +1,4 @@
-@lexer lex
+@lexer lexer
 
 _  -> __:? {% () => null %}
-__ -> %ws {% () => null %}
+__ -> %ws  {% () => null %}

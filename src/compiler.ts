@@ -1,8 +1,8 @@
 import { DashError } from "./error.js";
-import { ModuleNode } from "./node.js";
+import { Node } from "./node.js";
 
 export interface Compiler<T = any> {
-  compile(chunk: ModuleNode): T;
+  compile(node: Node): T;
 }
 
 export class DashCompileError extends DashError { }

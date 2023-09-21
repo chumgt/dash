@@ -1,0 +1,32 @@
+math ::= import("dash:math");
+
+export range(start, stop, step = 1) {
+  stepSign ::= math.sign(step);
+  i := start;
+  
+  fn () {
+    switch {
+      stepSign != math.sign(stop - i) => 0;
+      else => {
+        j ::= i;
+        i = i + step;
+        j
+      };
+    }
+  }
+};
+
+export values(all) {
+  i := 0;
+
+  fn () {
+    switch {
+      i < all.length => {
+        val ::= all.at(i);
+        i = i + 1;
+        val
+      };
+      else => 0;
+    }
+  }
+};

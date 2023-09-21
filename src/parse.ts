@@ -1,9 +1,10 @@
-import * as ne from "nearley";
+import ne from "nearley";
+import { Writable } from "node:stream";
 import { DashError } from "./error";
 import { TokenSource } from "./token";
 
 import * as grammarRules from "./grammar/index";
-import { Node } from "./node";
+import { ChunkNode } from "./node";
 const grammar = ne.Grammar.fromCompiled(grammarRules);
 
 export class DashParseError extends DashError {
@@ -13,29 +14,45 @@ export class DashParseError extends DashError {
   }
 }
 
-export function parse(str: string): Node[] {
-  const parser = new ne.Parser(grammar);
+export interface Parser {
+  feed(chunk: string): this;
+  /** Close the parser and return its results. */
+  finish(): ChunkNode[];
+}
+
+export interface ParseOptions {
+  all: boolean;
+}
+
+export function parse(chunk: string): ChunkNode {
+  return parseAll(chunk)[0];
+}
+
+export function parseAll(chunk: string): ChunkNode[] {
+  const parser = newParser();
   try {
-    parser.feed(str);
+    parser.feed(chunk);
   } catch (ex: any) {
     throw new DashParseError(ex.message, {cause: ex}, ex.token);
   }
 
-  const asts: Node[] = parser.finish();
+  const asts = parser.finish();
   return asts;
 }
 
-// TODO this is really silly. but i'm sure there are false ambiguities showing
-// up. this reduces a lot of them.
-export function filterDuplicateChunks(chunks: Node[]): Node[] {
-  const set = new Set<string>();
-  const uniqueChunks: Node[] = [];
-  for (let chunk of chunks) {
-    const str = JSON.stringify(chunk);
-    if (! set.has(str)) {
-      uniqueChunks.push(chunk);
-      set.add(str);
+export function createParseStream(parser: Parser): Writable {
+  return new Writable({
+    write(chunk, _encoding, done) {
+      try {
+        parser.feed(chunk.toString("utf-8"));
+        done();
+      } catch (ex) {
+        done(ex);
+      }
     }
-  }
-  return uniqueChunks;
+  });
+}
+
+export function newParser(): Parser {
+  return new ne.Parser(grammar);
 }
