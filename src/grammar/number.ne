@@ -1,11 +1,22 @@
+@{%
+  function postInt(type: data.DatumType, base: number) {
+    return function (token: any) {
+      return ({
+        type, base,
+        "value": token[0].value,
+        "source": token[0]
+      });
+    };
+  }
+%}
 
 @lexer lexer
 
-Number ->
-  (Float | Integer)
+NumberLiteral ->
+  (FloatLiteral | IntegerLiteral)
     {% (d) => new expr.ValueExpression(d[0][0]) %}
 
-Float ->
+FloatLiteral ->
   %float
     {% (d) => ({
       "type": data.DatumType.Float32,
@@ -13,28 +24,8 @@ Float ->
       source: d[0]
     }) %}
 
-Integer ->
-  %base2 {% (d) => ({
-      "type": data.DatumType.Int32,
-      "base": 2,
-      "value": d[0].value,
-      source: d[0]
-    }) %}
-  | %base8 {% (d) => ({
-      "type": data.DatumType.Int32,
-      "base": 8,
-      "value": d[0].value,
-      source: d[0]
-    }) %}
-  | %base16 {% (d) => ({
-      "type": data.DatumType.Int32,
-      "base": 16,
-      "value": d[0].value,
-      source: d[0]
-    }) %}
-  | %base10 {% (d) => ({
-      "type": data.DatumType.Int32,
-      "base": 10,
-      "value": d[0].value,
-      source: d[0]
-    }) %}
+IntegerLiteral ->
+  %base2 {% postInt(data.DatumType.Int32, 2) %}
+  | %base8 {% postInt(data.DatumType.Int32, 8) %}
+  | %base10 {% postInt(data.DatumType.Int32, 10) %}
+  | %base16 {% postInt(data.DatumType.Int32, 16) %}

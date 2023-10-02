@@ -2,30 +2,41 @@
 
 AssignmentStmt ->
   DeclarationStmt       {% id %}
-  | DestrAssignmentStmt {% id %}
+  # | DestrAssignmentStmt {% id %}
   | ReassignmentStmt    {% id %}
 
 DeclarationStmt ->
-  Identifier _ %colon %colon:? (_ Primary):? _ %eq _ ReturnExpr
-    {% (d) => new stmt.DeclarationStatement(d[0], d[8], d[4]?.[1]) %}
+  AnnotationList _ Identifier _ %colon %colon:? (_ Primary):? _ %eq _ ExprBlock
+    {% (d) => new stmt.DeclarationStatement(d[2], d[10], {
+      "annotations": d[0],
+      "returnType": d[6]?.[1]
+    }) %}
   | FunctionDecl
     {% id %}
 
 ReassignmentStmt ->
-  Deref _ %eq _ Expr
+  Reference _ %eq _ Expr
     {% (d) => new stmt.AssignmentStatement(d[0], d[4]) %}
 
 DestrAssignmentStmt ->
   %lbracket _ DestrLBody _ %rbracket _ %eq _ %lbracket _ DestrRBody _ %rbracket
     {% (d) => new stmt.DestrAssignmentStatement(d[2], d[10]) %}
 
+Annotation ->
+  %at Primary
+    {% nth(1) %}
+AnnotationList ->
+  AnnotationList __ Annotation {% (d) => [...d[0], d[2]] %}
+  | Annotation {% (d) => [d[0]] %}
+  | null {% () => [] %}
+
 DestrLBody ->
-  Identifier
-    {% (d) => [d[0]] %}
-  | DestrLBody _ %comma _ Identifier
+  DestrLBody _ %comma _ Identifier
     {% (d) => [...d[0], d[4]] %}
+  | Identifier
+    {% (d) => [d[0]] %}
 DestrRBody ->
-  Expr
-    {% (d) => [d[0]] %}
-  | DestrRBody _ %comma _ Expr
+  DestrRBody _ %comma _ Expr
     {% (d) => [...d[0], d[4]] %}
+  | Expr
+    {% (d) => [d[0]] %}

@@ -1,10 +1,10 @@
 import ne from "nearley";
 import { Writable } from "node:stream";
-import { DashError } from "./error";
-import { TokenSource } from "./token";
+import { DashError } from "./error.js";
+import { ChunkNode } from "./node.js";
+import { TokenSource } from "./token.js";
 
-import * as grammarRules from "./grammar/index";
-import { ChunkNode } from "./node";
+import * as grammarRules from "./grammar/index.js";
 const grammar = ne.Grammar.fromCompiled(grammarRules);
 
 export class DashParseError extends DashError {

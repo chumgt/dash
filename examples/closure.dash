@@ -1,7 +1,7 @@
 
-add ::= (a) {
-  (b) { a + b }
-};
+add ::= fn (a) {
+  fn (b) = a + b
+}
 
-add5 ::= add(5);
-add5(7)
+add5 ::= add(5)
+write(add5(7))

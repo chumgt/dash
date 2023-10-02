@@ -1,5 +1,5 @@
-import { DatumType } from "./data";
-import { BinaryOpKind, Expression, ExpressionKind, IdentifierExpression } from "./expression";
+import { DatumType } from "./data.js";
+import { BinaryOpKind, Expression, ExpressionKind, IdentifierExpression, TypeExpression } from "./expression.js";
 
 export interface TokenSource {
   text: string;
@@ -56,7 +56,7 @@ export interface SwitchBlockToken extends Token {
 }
 
 export interface TypeToken extends Token {
-  records: [IdentifierExpression, IdentifierExpression][];
+  records: [IdentifierExpression, IdentifierExpression | TypeExpression][];
 }
 
 export interface UnaryOpToken extends ExpressionToken {

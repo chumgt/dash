@@ -1,17 +1,22 @@
 {
   "private": true,
-  "name": "@chumgt/dash",
+  "name": "@chumgt99/dash",
   "main": "./build/commonjs/index.js",
+  "type": "commonjs",
   "types": "./build/types/index.d.ts",
   "version": "0.1.0",
   "bin": {
-    "dash": "./build/main.js"
+    "dash": "node ./build/commonjs/main.js"
+  },
+  "engines": {
+    "node": ">=16.0.0"
   },
   "scripts": {
-    "build": "gulp build",
-    "script": "gulp commonjs && node ./build/commonjs/main.js -f ./script.dash",
-    "start": "node build/main.js",
-    "test": "gulp build-grammar && ava --config \"./ava.config.js\""
+    "script": "gulp script && node ./build/commonjs/main.js -f ./script.dash | more",
+    "start": "node build/commonjs/main.js",
+    "pretest": "gulp grammar",
+    "test": "ava --config \"./ava.config.js\"",
+    "railroad": "nearley-railroad src/grammar/index.ne -o syntax.html"
   },
   "devDependencies": {
     "@types/gulp": "^4.0.6",
@@ -19,6 +24,7 @@
     "@types/moo": "^0.5.3",
     "@types/nearley": "^2.11.1",
     "@types/node": "^14.10.1",
+    "@types/readline-sync": "^1.4.4",
     "@types/yargs": "^15.0.5",
     "ava": "^5.3.0",
     "del": "^5.1.0",
@@ -26,14 +32,34 @@
     "gulp-nearley": "^1.0.0",
     "gulp-rename": "^2.0.0",
     "gulp-typescript": "^6.0.0-alpha.1",
-    "nearley": "^2.11.1",
+    "readline-sync": "^1.4.10",
     "through2": "^4.0.2",
     "ts-node": "^10.9.1",
+    "typedoc": "^0.25.1",
+    "typedoc-plugin-mdn-links": "^3.1.0",
     "typescript": "^5.1.3"
   },
   "dependencies": {
     "moo": "^0.5.2",
+    "nearley": "2.11.1",
     "tslib": "^2.3.1",
     "yargs": "^16.0.3"
+  },
+  "description": "A fun scripting language",
+  "homepage": "https://github.com/chumgt/dash",
+  "keywords": [
+    "expression",
+    "interpreted",
+    "language",
+    "parser",
+    "scripting"
+  ],
+  "bugs": {
+    "url": "https://github.com/chumgt/dash/issues"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/chumgt/dash"
   }
 }

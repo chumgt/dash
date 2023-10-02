@@ -2,14 +2,14 @@
 import fs from "node:fs";
 import rlsync from "readline-sync";
 import yargs from "yargs";
-import { DatumType } from "./data";
-import { DashError } from "./error";
-import { Expression } from "./expression";
-import { Block, ChunkNode, NodeKind } from "./node";
-import { Value, wrapFunction } from "./value";
-import { Vm } from "./vm";
-import * as parsing from "./parse";
-import * as types from "./type";
+import { DatumType } from "./data.js";
+import { DashError } from "./error.js";
+import { Expression } from "./expression.js";
+import { Block, ChunkNode, NodeKind } from "./node.js";
+import { Value, newArray, wrap, wrapFunction } from "./vm/value.js";
+import { Vm } from "./vm/vm.js";
+import * as parsing from "./parse.js";
+import * as types from "./vm/type.js";
 
 export function dostring(str: string, vm = new Vm): Value {
   const chunk = parsing.parse(str);
@@ -17,62 +17,33 @@ export function dostring(str: string, vm = new Vm): Value {
 }
 
 export function dochunk(chunk: ChunkNode, vm = new Vm): Value {
-  if (chunk.kind === NodeKind.Expression) {
-    const expr = chunk as Expression;
-    return expr.evaluate(vm);
-  } else if (chunk.kind === NodeKind.Block) {
-    const mod = chunk as Block;
-    mod.apply(vm);
-    return vm.getExportsAsValue();
-  } else {
-    throw new DashError("string is not an expression");
+  switch (chunk.kind) {
+    case NodeKind.Expression:
+      return (chunk as Expression).evaluate(vm);
+    case NodeKind.Block:
+      (chunk as Block).apply(vm);
+      return vm.getExportsAsValue();
+    default:
+      throw new DashError("string is not an expression");
   }
 }
 
 export function newVm(): Vm {
   const vm = new Vm();
 
-  function newArray(values: Value[]): Value {
-    const self:Value = new Value(types.OBJECT, values ?? [], {
-      length: new Value(types.INT32, values.length),
-      add: wrapFunction((args) => {
-        // self.data.push(...args);
-        // (self as any).props.length.data += args.length;
-        // return self;
-        return newArray([...self.data, ...args]);
-      }),
-      at: wrapFunction((args) => {
-        if (! types.INT.isAssignable(args[0].type))
-          throw new DashError("array index must be an int");
+  const USE_JSFN = false;
+  const jsfn = wrapFunction((args) => {
+    const d_keys = args[0].data as Value[];
+    const js_value = global[d_keys[0].data][d_keys[1].data];
 
-        const index = args[0].data;
-        if (index < 0 || index >= self.data.length)
-          throw new DashError(`array index ${index} out of bounds (${self.data.length})`);
-        return self.data[index];
-      }),
-      has: wrapFunction((args) => {
-        const index = self.data.findIndex(x => x.data === args[0].data);
-        return new Value(types.INT8, index >= 0 ? 1 : 0);
-      }),
-      // iter: wrapFunction((args) => {
-      //   let i = 0;
-      //   return wrapFunction(() => {
-      //     if (i > )
-      //   });
-      // })
+    return wrapFunction((args) => {
+      return (USE_JSFN) ? wrap(js_value) : args[0];
     });
-    return self;
-  }
+  });
 
+  vm.assign("Array", new Value(types.TYPE, types.ARRAY));
   vm.assign("array", wrapFunction((args) => {
-    return newArray(args);
-  }));
-  vm.assign("has", wrapFunction((args) => {
-    return new Value(types.INT8, args[0].data.indexOf(args[1].data) >= 0 ? 1 : 0);
-  }));
-  vm.assign("append", wrapFunction((args) => {
-    args[0].data.push(args[1].data);
-    return args[0];
+    return newArray(vm, args);
   }));
   vm.assign("import", wrapFunction((args) => {
     return vm.importModule(args[0].data);
@@ -87,14 +58,7 @@ export function newVm(): Vm {
       return new Value(types.STRING, answer);
     }
   }));
-  vm.assign("mod", wrapFunction((args) => {
-    const a = args[0],
-          b = args[1];
-    if (! (types.NUMBER.isAssignable(a.type) && types.NUMBER.isAssignable(b.type)))
-      throw new DashError("expected two numbers");
-
-    return new Value(types.ValueType.biggest(a.type, b.type), a.data % b.data);
-  }));
+  vm.assign("stop", Value.ITER_STOP);
   vm.assign("typeof", wrapFunction((args) => {
     if (args.length !== 1)
       throw new DashError("expected 1 arg, received " + args.length);
@@ -121,8 +85,28 @@ export function newVm(): Vm {
   vm.assign("fn", new Value(types.TYPE, types.FUNCTION));
   vm.assign("str", new Value(types.TYPE, types.STRING));
 
+  vm.assign("jsfn", jsfn);
+
   vm.assign("native", new Value(types.OBJECT, {}, {
-    random: wrapFunction((args) => new Value(types.FLOAT32, Math.random()))
+    mod: wrapFunction((args) => {
+      if (args.length !== 2)
+        throw new DashError(`expected 2 args, received ${args.length}`);
+      if (! args[0].type.extends(types.NUMBER))
+        throw new DashError(`cannot get modulo of a ${args[0].type.name}`);
+      if (! args[1].type.extends(types.NUMBER))
+        throw new DashError(`arg 2 expected number, got ${args[0].type.name}`);
+      const a = args[0].data;
+      const b = args[1].data;
+      return new Value(args[0].type, a % b);
+    })
+  }));
+  vm.assign("new", wrapFunction((args) => {
+    const t = args[0].data;
+    const v = new Value(types.OBJECT, 0, {
+      ["foo"]: new Value(types.STRING, "bar!"),
+      ["t"]: t
+    });
+    return v;
   }));
 
   vm.defineNs("dash", "./stdlib/");
@@ -158,7 +142,11 @@ function main() {
   const chunks = parsing.parseAll(code);
   // console.log(`Parsed in ${Date.now()-checkpoint}ms`);
   const chunk = chunks[0];
-  if (chunks.length > 1) console.log("chunks: " + chunks.length)
+  if (chunks.length > 1) console.log("chunks: " + chunks.length);
+  let a=[];
+  for (const c of chunks)
+    a[JSON.stringify(c)] = 1;
+  console.log("down to " + Object.keys(a).length)
   fs.writeFileSync("./ast.json", JSON.stringify(chunk, null, 2));
 
   checkpoint = Date.now();

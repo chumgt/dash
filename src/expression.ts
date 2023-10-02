@@ -1,10 +1,11 @@
-import { DashError } from "./error";
-import { AssignmentTarget, Block, Node, NodeKind, Visitor } from "./node";
-import { FunctionExprToken, ParameterToken, TypeToken, ValueToken } from "./token";
-import { ValueType } from "./type";
-import { FunctionValue, NativeFunctionValue, Value } from "./value";
-import { Vm } from "./vm";
-import * as types from "./type";
+import { DatumType } from "./data.js";
+import { DashError } from "./error.js";
+import { AssignmentTarget, Block, Node, NodeKind, Visitor } from "./node.js";
+import { FunctionExprToken, ParameterToken, TypeToken, ValueToken } from "./token.js";
+import { ValueType } from "./vm/type.js";
+import { DashFunctionValue, FunctionValue, NativeFunctionValue, Value, getValueIteratorFn, newArray } from "./vm/value.js";
+import { Vm } from "./vm/vm.js";
+import * as types from "./vm/type.js";
 
 export enum ExpressionKind {
   /* TODO: These are strings for development as it makes it easier to read the
@@ -36,6 +37,7 @@ export enum ExpressionKind {
   Or = "BinOr",
 
   If = "If",
+  For = "For",
   Switch = "Switch",
 
   Assignment = "Assignment",
@@ -74,7 +76,7 @@ export const enum BinaryOpKind {
 }
 
 export const enum UnaryOpKind {
-  Negate,
+  Negate = 16,
   Not
 }
 
@@ -83,39 +85,43 @@ export enum ValueKind {
   String
 }
 
-export abstract class Expression extends Node {
-  public constructor(public type: ExpressionKind) {
-    super(NodeKind.Expression);
-  }
-  public abstract evaluate(vm: Vm): Value;
+export interface Expression extends Node {
+  readonly type: ExpressionKind;
+  evaluate(vm: Vm): Value;
 }
 
-export class BlockExpression extends Expression {
+export class BlockExpression extends Node
+implements Expression {
   public constructor(
       public block: Block,
       public returnExpr: Expression) {
-    super(ExpressionKind.Block);
+    super(NodeKind.Expression);
   }
 
-  public override evaluate(vm: Vm): Value {
+  public get type() { return ExpressionKind.Block }
+
+  public evaluate(vm: Vm): Value {
     this.block.apply(vm);
     return this.returnExpr.evaluate(vm);
   }
 }
 
-export class BinaryOpExpression extends Expression {
+export class BinaryOpExpression extends Node
+implements Expression {
   op: BinaryOpKind;
   lhs: Expression;
   rhs: Expression;
 
   public constructor(op: BinaryOpKind, lhs: Expression, rhs: Expression) {
-    super(ExpressionKind.BinaryOp);
+    super(NodeKind.Expression);
     this.op = op;
     this.lhs = lhs;
     this.rhs = rhs;
   }
 
-  public override evaluate(vm: Vm): Value {
+  public get type() { return ExpressionKind.BinaryOp }
+
+  public evaluate(vm: Vm): Value {
     const lhs = this.lhs.evaluate(vm);
     const fn = lhs.type.getOperator(this.op);
     if (! fn)
@@ -126,17 +132,20 @@ export class BinaryOpExpression extends Expression {
   }
 }
 
-export class UnaryOpExpression extends Expression {
+export class UnaryOpExpression extends Node
+implements Expression {
   op: UnaryOpKind;
   rhs: Expression;
 
   public constructor(op: UnaryOpKind, rhs: Expression) {
-    super(ExpressionKind.UnaryOp);
+    super(NodeKind.Expression);
     this.op = op;
     this.rhs = rhs;
   }
 
-  public override evaluate(vm: Vm): Value {
+  public get type() { return ExpressionKind.Block }
+
+  public evaluate(vm: Vm): Value {
     const rhs = this.rhs.evaluate(vm);
     const fn = rhs.type.getOperator(this.op);
     if (! fn)
@@ -146,43 +155,44 @@ export class UnaryOpExpression extends Expression {
   }
 }
 
-export class CallExpression extends Expression {
+export class CallExpression extends Node
+implements Expression {
   target: Expression;
   args: Expression[];
 
   public constructor(target: Expression, args: Expression[]) {
-    super(ExpressionKind.Call);
+    super(NodeKind.Expression);
     this.target = target;
     this.args = args;
   }
+
+  public get type() { return ExpressionKind.Block }
 
   public apply(vm: Vm): void {
     this.evaluate(vm);
   }
 
-  public override evaluate(vm: Vm): Value {
+  public evaluate(vm: Vm): Value {
     const target = this.target.evaluate(vm);
-    if (target.type !== types.FUNCTION)
+    if (! types.FUNCTION.isAssignable(target.type))
       throw new DashError("target is not callable");
-    if (target instanceof FunctionValue || target instanceof NativeFunctionValue) {
-      const args = (target.params)
-          ? mapArgsToParams(this.args, target.params)
-          : this.args;
-      return target.call(vm, args);
-    } else {
-      throw new DashError("target is not callable");
-    }
+
+    const fn = target as FunctionValue;
+    return fn.callExpr(vm, this.args);
   }
 }
 
-export class CastExpression extends Expression {
+export class CastExpression extends Node
+implements Expression {
   public constructor(
       public typeDef: Expression,
       public value: Expression) {
-    super(ExpressionKind.Cast);
+    super(NodeKind.Expression);
   }
 
-  public override evaluate(vm: Vm): Value {
+  public get type() { return ExpressionKind.Block }
+
+  public evaluate(vm: Vm): Value {
     const type = this.typeDef.evaluate(vm);
     if (! type.type.extends(types.TYPE))
       throw new DashError("cast to non-type");
@@ -201,9 +211,11 @@ implements AssignmentTarget {
     super(BinaryOpKind.Dereference, lhs, rhs);
   }
 
+  public override get type() { return ExpressionKind.Block }
+
   public override evaluate(vm: Vm): Value {
     const lhs = this.lhs.evaluate(vm);
-    const op = lhs.type.operators[BinaryOpKind.Dereference];
+    const op = lhs.type.getOperator(BinaryOpKind.Dereference);
     if (! op)
       throw new DashError(`type ${lhs.type.name} is not dereferencable`);
     return op(lhs, new Value(types.STRING, this.rhs.getKey()));
@@ -222,32 +234,37 @@ implements AssignmentTarget {
   }
 }
 
-export class FunctionExpression extends Expression {
+export class FunctionExpression extends Node
+implements Expression {
   block: Expression;
   params: ParameterToken[];
 
   public constructor(token: FunctionExprToken) {
-    super(ExpressionKind.Function);
+    super(NodeKind.Expression);
     this.block = token.block;
     this.params = token.params;
   }
 
-  public override evaluate(vm: Vm): Value {
-    const val = new FunctionValue(this.params, this.block, vm);
+  public get type() { return ExpressionKind.Block }
+
+  public evaluate(vm: Vm): Value {
+    const val = new DashFunctionValue(this.params, this.block, vm);
     return val;
   }
 }
 
-export class IdentifierExpression extends Expression
-implements AssignmentTarget {
+export class IdentifierExpression extends Node
+implements Expression, AssignmentTarget {
   value: string;
 
   public constructor(value: string) {
-    super(ExpressionKind.Identifier);
+    super(NodeKind.Expression);
     this.value = value;
   }
 
-  public override evaluate(vm: Vm): Value {
+  public get type() { return ExpressionKind.Block }
+
+  public evaluate(vm: Vm): Value {
     return vm.get(this.value);
   }
 
@@ -260,15 +277,17 @@ implements AssignmentTarget {
   }
 }
 
-export class IfExpression extends Expression {
+export class IfExpression extends Node implements Expression {
   public constructor(
       public condition: Expression,
       public tResult: Expression,
       public fResult: Expression) {
-    super(ExpressionKind.If);
+    super(NodeKind.Expression);
   }
 
-  public override evaluate(vm: Vm): Value {
+  public get type() { return ExpressionKind.Block }
+
+  public evaluate(vm: Vm): Value {
     const cond = this.condition.evaluate(vm);
     return (cond.data)
         ? this.tResult.evaluate(vm)
@@ -276,15 +295,47 @@ export class IfExpression extends Expression {
   }
 }
 
-export class SwitchExpression extends Expression {
+export class ForMapExpression extends Node
+implements Expression {
+  public constructor(
+      public identifier: IdentifierExpression,
+      public iterExpr: Expression,
+      public expr: Expression) {
+    super(NodeKind.Expression);
+  }
+
+  public get type() { return ExpressionKind.For }
+
+  public evaluate(vm: Vm): Value {
+    const iterFn = this.iterExpr.evaluate(vm);
+    const iter = getValueIteratorFn(iterFn, vm);
+    return this.collect(iter, vm);
+  }
+
+  public collect(iterator: FunctionValue, vm: Vm) {
+    const key = this.identifier.getKey();
+    const values: Value[] = [ ];
+    const sub = vm.sub();
+    let value: Value;
+    while ((value = iterator.callExpr(vm, [])) !== Value.ITER_STOP) {
+      sub.assign(key, value);
+      values.push(this.expr.evaluate(sub));
+    }
+    return newArray(vm, values);
+  }
+}
+
+export class SwitchExpression extends Node implements Expression {
   public constructor(
       public test: Expression | undefined,
       public patterns: [Expression, Expression][],
       public defaultCase: Expression) {
-    super(ExpressionKind.Switch);
+    super(NodeKind.Expression);
   }
 
-  public override evaluate(vm: Vm): Value {
+  public get type() { return ExpressionKind.Block }
+
+  public evaluate(vm: Vm): Value {
     const context = vm.sub();
 
     if (this.test) {
@@ -309,27 +360,71 @@ export class SwitchExpression extends Expression {
   }
 }
 
-export class TypeExpression extends Expression {
-  public constructor(token: TypeToken) {
-    super(ExpressionKind.Type);
+export class TypeExpression extends Node implements Expression {
+  public constructor(protected token: TypeToken) {
+    super(NodeKind.Expression);
   }
 
-  public override evaluate(vm: Vm): Value {
-    return new Value(types.TYPE, new ValueType());
+  public get type() { return ExpressionKind.Block }
+
+  public evaluate(vm: Vm): Value {
+    const t = new ValueType(types.TYPE);
+    for (let [recordK, recordV] of this.token.records) {
+      const fieldK = recordK.getKey();
+      const fieldT = recordV.evaluate(vm);
+      if (! fieldT.type.extends(types.TYPE))
+        throw new DashError(`record ${fieldK} not typed`);
+      t.fields[fieldK] = ({
+        name: fieldK,
+        type: fieldT.data
+      });
+    }
+
+    const v = new Value(types.TYPE, t);
+    return v;
   }
 }
 
-export class ValueExpression extends Expression {
+export class ValueExpression extends Node implements Expression {
   public constructor(public token: ValueToken) {
-    super(ExpressionKind.Value);
+    super(NodeKind.Expression);
   }
 
-  public override evaluate(vm: Vm): Value {
+  public get type() { return ExpressionKind.Block }
+
+  public apply(vm: Vm) {
+    // string as comment
+  }
+
+  public evaluate(vm: Vm): Value {
     return vm.newDatumValue(this.token.type, this.token.value);
   }
 
   public override accept(visitor: Visitor<this>): void {
     visitor.visit(this);
+  }
+}
+
+export class ArrayExpression extends ValueExpression {
+  public constructor(public content: Expression[]) {
+    super({
+      kind: ExpressionKind.Value,
+      type: DatumType.Any,
+      value: [ ]
+    });
+  }
+
+  public override evaluate(vm: Vm): Value {
+    const values: Value[] = [ ];
+    for (let expr of this.content) {
+      const result = expr.evaluate(vm);
+      if (expr.type === ExpressionKind.For) {
+        values.push(...result.data);
+      } else {
+        values.push(result);
+      }
+    }
+    return newArray(vm, values);
   }
 }
 

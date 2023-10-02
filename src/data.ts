@@ -1,7 +1,3 @@
-import { Value } from "./value";
-
-export type NativeFunction =
-    (args: Value[]) => Value | never;
 
 export enum DatumType {
   Int8 = 1 << 0,
@@ -20,11 +16,6 @@ export enum DatumType {
   Number = Float | Integer,
   Any = Function | Number | String | Type
 }
-
-export type Datum = {
-  type: DatumType;
-  view: DataView;
-};
 
 export interface DatumTypeCastMap {
   [DatumType.Float32]: [DatumType.Float64, DatumType.Int8, DatumType.Int16, DatumType.Int32, DatumType.Int64],

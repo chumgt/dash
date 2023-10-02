@@ -10,27 +10,27 @@ Function ->
     }) %}
 
 FunctionDecl ->
-  Identifier _ %lparen _ ParamList _ %rparen (_ %colon _ Primary):? _ FunctionBody
-    {% (d) => new stmt.FunctionDeclaration(d[0], d[4], d[9], d[7]?.[3]) %}
+  %kw_fn __ Identifier _ %lparen _ ParamList _ %rparen (_ %colon _ Primary):? _ FunctionBody
+    {% (d) => new stmt.FunctionDeclaration(d[2], d[6], d[11], d[9]?.[3]) %}
 
 FunctionBody ->
-  BlockExpr
-    {% id %}
-  | %eq _ ReturnExpr
+  %eq _ Expr
     {% nth(2) %}
+  | ExprBlock
+    {% id %}
 
 ArgList ->
-  Arg  {% (d) => [d[0]] %}
-  | ArgList _ %comma _ Arg {% (d) => [...d[0], d[4]] %}
+  ArgList _ %comma _ Arg {% (d) => [...d[0], d[4]] %}
+  | Arg  {% (d) => [d[0]] %}
   | null {% () => [] %}
 
 Arg ->
-  ReturnExpr
+  Expr
     {% id %}
 
 ParamList ->
-  Param  {% (d) => [d[0]] %}
-  | ParamList _ %comma _ Param {% (d) => [...d[0], d[4]] %}
+  ParamList _ %comma _ Param {% (d) => [...d[0], d[4]] %}
+  | Param  {% (d) => [d[0]] %}
   | null {% () => [] %}
 
 Param ->

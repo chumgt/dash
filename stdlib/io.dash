@@ -1,0 +1,4 @@
+__write ::= write
+
+export write ::= __write
+export fn writeln(msg) = write(msg, "\n")

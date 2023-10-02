@@ -1,21 +1,21 @@
-iters ::= import("dash:iter");
+iters ::= import("dash:iter")
+range ::= iters.range
 
-sieve(n: int32) {
-  multiples := array();
-  primes := array();
+fn sieve(n: int32) {
+  multiples := array()
+  primes := array()
 
-  for i in iters.range(2, n + 1, 1) {
+  for i in 2..(n+1) {
     if !multiples.has(i) {
-      primes = primes.add(i);
-      for j in iters.range(i**2, n + 1, i) {
-        multiples = multiples.add(j);
-      };
-    };
-  };
+      primes = primes.add(i)
+      for j in range(i**2, n + 1, i) {
+        multiples = multiples.add(j)
+      }
+    }
+  }
 
   primes
-};
+}
 
-for i in iters.values(sieve(100)) {
+for i in sieve(100)
   write(i, "\n");
-};

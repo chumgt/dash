@@ -1,7 +1,7 @@
-import { Expression } from "./expression";
-import { Statement } from "./statement";
-import { Value } from "./value";
-import { Vm } from "./vm";
+import { Expression } from "./expression.js";
+import { Statement } from "./statement.js";
+import { Value } from "./vm/value.js";
+import { Vm } from "./vm/vm.js";
 
 export enum NodeKind {
   Block,
@@ -21,8 +21,17 @@ export interface DereferenceTarget {
   dereference(key: Value): Value;
 }
 
+export interface Exportable {
+  getExportName(): string;
+  getExportValue(): Value;
+}
+
 export interface Resolvable<T> {
   resolve(vm: Vm): T;
+}
+
+export interface Symbolic {
+  getSymbol(): string;
 }
 
 export type ChunkNode =

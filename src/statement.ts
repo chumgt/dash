@@ -1,10 +1,10 @@
-import { DashError } from "./error";
-import { Expression, IdentifierExpression, ValueExpression } from "./expression";
-import { AssignmentTarget, Block, Node, NodeKind } from "./node";
-import { FunctionDeclToken, ParameterToken } from "./token";
-import { FUNCTION, ValueType } from "./type";
-import { FunctionValue, Value } from "./value";
-import { Vm } from "./vm";
+import { DashError } from "./error.js";
+import { Expression, IdentifierExpression, ValueExpression } from "./expression.js";
+import { AssignmentTarget, Block, Exportable, Node, NodeKind } from "./node.js";
+import { FunctionDeclToken, ParameterToken } from "./token.js";
+import { FUNCTION, OBJECT, ValueType } from "./vm/type.js";
+import { DashFunctionValue, FunctionValue, Value, getValueIteratorFn } from "./vm/value.js";
+import { Vm } from "./vm/vm.js";
 
 export enum StatementKind {
   Assignment,
@@ -15,7 +15,13 @@ export enum StatementKind {
   Function,
   If,
   Return,
+  Throw,
   While
+}
+
+export interface DeclarationInfo {
+  annotations: Expression[];
+  returnType: Expression;
 }
 
 export abstract class Statement extends Node {
@@ -43,19 +49,29 @@ export class AssignmentStatement extends Statement {
 
 export class DeclarationStatement extends AssignmentStatement {
   public constructor(target: AssignmentTarget, valueExpr: Expression,
-      public typeDef?: Expression) {
+      public info: DeclarationInfo) {
     super(target, valueExpr);
     this.type = StatementKind.Declaration;
   }
 
   public override apply(vm: Vm) {
-    const value = this.valueExpr.evaluate(vm);
+    let value = this.valueExpr.evaluate(vm);
 
-    if (this.typeDef) {
-      const type = this.typeDef.evaluate(vm).data as ValueType;
+    if (this.info.returnType) {
+      const type = this.info.returnType.evaluate(vm).data as ValueType;
       if (! type.isAssignable(value.type))
         throw new TypeError(`${value.type.name} not assignable to ${type.name}`);
     }
+
+    if (this.info.annotations?.length > 0) {
+      for (let anno of this.info.annotations) {
+        const func = anno.evaluate(vm);
+        if (! FUNCTION.isAssignable(func.type))
+          throw new DashError("annotation must be a fn");
+        value = (func as FunctionValue).call(vm, [value]);
+      }
+    }
+
     this.target.assign(value, vm);
   }
 }
@@ -73,7 +89,7 @@ export class FunctionDeclaration extends Statement {
   }
 
   public override apply(vm: Vm): void {
-    const val = new FunctionValue(this.params, this.body, vm);
+    const val = new DashFunctionValue(this.params, this.body, vm);
     this.identifier.assign(val, vm);
   }
 /*
@@ -138,19 +154,17 @@ export class ForInStatement extends Statement {
   }
 
   public override apply(vm: Vm): void {
-    const key = this.identifier.getKey();
-    const iterable = this.iterExpr.evaluate(vm);
+    const iter = getValueIteratorFn(this.iterExpr.evaluate(vm), vm);
+    this.iterate(iter, vm);
+  }
 
-    if (iterable.type === FUNCTION) {
-      const iterFn = iterable as FunctionValue;
-      const sub = vm.sub();
-      let value: Value;
-      while ((value = iterFn.call(vm, [])).data !== 0) {
-        sub.assign(key, value);
-        this.block.apply(sub);
-      }
-    } else {
-      throw new DashError(iterable.type.name+" not iterable");
+  protected iterate(iterator: FunctionValue, vm: Vm) {
+    const key = this.identifier.getKey();
+    const sub = vm.sub();
+    let value: Value;
+    while ((value = iterator.callExpr(vm, [])) !== Value.ITER_STOP) {
+      sub.assign(key, value);
+      this.block.apply(sub);
     }
   }
 }
@@ -180,6 +194,16 @@ export class ReturnStatement extends Statement {
 
   public override apply(vm: Vm): void {
     throw new Error("??");
+  }
+}
+
+export class ThrowStatement extends Statement {
+  public constructor(public expr: Expression) {
+    super(StatementKind.Throw);
+  }
+
+  public override apply(vm: Vm): void {
+    throw new DashError(`Thrown:\t${this.expr.evaluate(vm)}`);
   }
 }
 

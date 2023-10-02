@@ -1,32 +1,25 @@
-math ::= import("dash:math");
+math ::= import("dash:math")
+io ::= import("dash:io")
 
-export range(start, stop, step = 1) {
-  stepSign ::= math.sign(step);
-  i := start;
-  
+export stop ::= native.stop
+
+export fn range(start, stop, step = 1) {
+  if step == 0 
+    throw "step cannot be 0";
+  if !math.is_finite(step)
+    throw "step must be finite";
+
+  stepSign ::= math.sign(step)
+  i := start
+
   fn () {
     switch {
-      stepSign != math.sign(stop - i) => 0;
+      stepSign != math.sign(stop - i) => stop
       else => {
-        j ::= i;
-        i = i + step;
+        j ::= i
+        i = i + step
         j
-      };
+      }
     }
   }
-};
-
-export values(all) {
-  i := 0;
-
-  fn () {
-    switch {
-      i < all.length => {
-        val ::= all.at(i);
-        i = i + 1;
-        val
-      };
-      else => 0;
-    }
-  }
-};
+}

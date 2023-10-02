@@ -1,7 +1,7 @@
-import { DatumType } from "./data";
-import { DashError } from "./error";
-import { BinaryOpKind, UnaryOpKind } from "./expression";
-import { Value, wrapFunction } from "./value";
+import { DatumType } from "../data.js";
+import { DashError } from "../error.js";
+import { BinaryOpKind, UnaryOpKind } from "../expression.js";
+import { Value, newRangeIter, wrapFunction } from "./value.js";
 
 export type BinaryOperatorFunction =
     (a: Value, b: Value) => Value;
@@ -16,6 +16,11 @@ export type BinaryOperatorMap = {
 export type UnaryOperatorMap = {
   [K in keyof typeof UnaryOpKind]: UnaryOperatorFunction;
 };
+
+export interface FieldInfo {
+  name: string;
+  type: Type;
+}
 
 export interface TypeHeader {
   name: string;
@@ -36,20 +41,20 @@ export class Type {
 export class ValueType extends Type {
   public static biggest<T0 extends ValueType, T1 extends ValueType>(a: T0, b: T1): T0 | T1 {
     if (a.header?.byteLength && b.header?.byteLength) {
-      return (a.header.byteLength >= b.header.byteLength)
-          ? a
-          : b;
+      return (a.header.byteLength >= b.header.byteLength) ? a : b;
     }
     throw new DashError("cannot compare sizes of non-primitive types");
   }
 
   public operators: Partial<BinaryOperatorMap | UnaryOperatorMap>;
+  public fields: Record<string, FieldInfo>;
 
   public constructor(
       public readonly superType?: ValueType,
       override readonly header?: Readonly<ValueTypeHeader>) {
     super();
     this.operators = { };
+    this.fields = { };
   }
 
   public get name(): string {
@@ -69,8 +74,6 @@ export class ValueType extends Type {
   public from(type: DatumType, value: any): Value {
     throw new DashError(`cannot convert ${type} to ${this.name}`);
   }
-
-  // public getIterator(value: Value): FunctionValue |  {}
 
   public getOperator(op: BinaryOpKind): BinaryOperatorFunction | undefined;
   public getOperator(op: UnaryOpKind): UnaryOperatorFunction | undefined;
@@ -94,12 +97,17 @@ Lua a ~= b to not (a == b), a > b to b < a, and a >= b to b <= a.
 export const TYPE = new ValueType();
 export const OBJECT = new ValueType();
 OBJECT.operators[BinaryOpKind.Dereference] = (a, b) => {
-  if (! a.props)
-    throw new DashError("cannot dereference non-object");
-  if (! (b.data in a.props))
-    throw new DashError(`property ${b.data} does not exist`);
-  return a.props[b.data];
+  return a.properties?.[b.data] ?? a.data[b.data];
 };
+
+export const ARRAY = new ValueType(undefined, {name: "Array"});
+ARRAY.operators[BinaryOpKind.Dereference] = (a, b) => {
+  const key = b.data;
+  if (a.properties && key in a.properties)
+    return a.properties[b.data];
+  else
+    throw new DashError("not found");
+}
 
 export const ANY = new Type();
 ANY.isAssignable = function (type) { return true };
@@ -124,6 +132,22 @@ NUMBER.operators[UnaryOpKind.Not] = (a) => new Value(INT8, a.data ? 0 : 1);
 NUMBER.cast = function (this: ValueType, _value) {
   throw new DashError("ambiguous number type");
 };
+NUMBER.operators[BinaryOpKind.Concat] = (a, b) => {
+  if (NUMBER.isAssignable(b.type)) {
+    const [start, stop] = [a.data, b.data] as number[];
+    if (! (Number.isInteger(start) && Number.isInteger(stop)))
+      throw new DashError("range only possible with integers");
+
+    return newRangeIter(start, stop, Math.sign(stop - start));
+  }
+  else if (STRING.isAssignable(b.type)) {
+    return new Value(STRING, String(a.data) + b.data);
+  }
+  else {
+    throw new DashError(`concat op on ${a.type.name} and ${b.type.name}`);
+  }
+};
+
 
 export const INT = new ValueType(NUMBER);
 INT.from = function (this: ValueType, type, value) {

@@ -1,9 +1,9 @@
 @{%
   import * as moo from "moo";
-  import * as data from "../data";
-  import * as expr from "../expression";
-  import * as node from "../node";
-  import * as stmt from "../statement";
+  import * as data from "../data.js";
+  import * as expr from "../expression.js";
+  import * as node from "../node.js";
+  import * as stmt from "../statement.js";
 
   /** Returns a Nearley postprocessor which returns
    * `d[index0][index1][index2][...][indexN]`. */
@@ -29,6 +29,7 @@
         "kw_for": "for",
         "kw_return": "return",
         "kw_switch": "switch",
+        "kw_throw": "throw",
         "kw_type": "type",
         "kw_while": "while",
         "kw_true": "true",
@@ -58,7 +59,7 @@
     string: {
       match: /"(?:\\["bfnrt\/\\]|\\u[a-fA-F0-9]{4}|[^"])*"/,
       lineBreaks: true,
-      value: (x) => JSON.parse(x.replaceAll("\n", "\\n"))
+      value: (x) => x.substring(1, x.length-1).replace("\\n", "\n")
     },
 
     comma: ",",
@@ -87,6 +88,8 @@
 
     // fslash: "/",
     // bslash: "\\",
+    at: "@",
+    under: "_",
 
     dollar: "$",
     infinity: "\u221E",
@@ -114,125 +117,133 @@
 @include "src/grammar/whitespace.ne"
 
 Chunk ->
-  _ ChunkBody _
+  _ StmtBlockBody _
     {% (d) => new node.Block(d[1]) %}
-  | _ ReturnExpr _
+  | _ Expr _
     {% nth(1) %}
 
-ChunkBody ->
-  Stmt _ %semi
-    {% (d) => [d[0]] %}
-  | ChunkBody _ Stmt _ %semi
-    {% (d) => [...d[0], d[2]] %}
-  | null
-    {% (d) => [] %}
-
-Block ->
-  %lbrace _ ChunkBody _ %rbrace
-    {% (d) => new node.Block(d[2]) %}
-
-BlockExpr ->
-  %lbrace _ ChunkBody _ ReturnExpr _ %rbrace
+ExprBlock ->
+  %lbrace _ StmtBlockBody _ Expr _ %rbrace
     {% (d) => new expr.BlockExpression(
         new node.Block(d[2]), d[4]) %}
+  | Expr
+    {% (d) => new expr.BlockExpression(new node.Block([]), d[0]) %}
 
-ReturnExpr ->
-  ReturnStmt   {% id %}
-  | BlockExpr  {% id %}
-  | IfExpr     {% id %}
-  | SwitchExpr {% id %}
-  | Expr       {% id %}
+StmtBlock ->
+  %lbrace _ StmtBlockBody _ %rbrace
+    {% (d) => new node.Block(d[2]) %}
+  | Stmt _ %semi
+    {% (d) => new node.Block([d[0]]) %}
+  | %semi
+    {% (d) => new node.Block([]) %}
+
+StmtBlockBody ->
+  StmtBlockBody _ Stmt {% (d) => [...d[0], d[2]] %}
+  | Stmt {% (d) => [d[0]] %}
+  | null {% (d) => [] %}
 
 Expr ->
-  OpExpr {% id %}
+  OpExpr     {% id %}
   | Function {% id %}
-
-ParendExpr ->
-  %lparen _ Expr _ %rparen
-    {% nth(2) %}
+  | IfExpr     {% id %}
+  | SwitchExpr {% id %}
 
 Stmt ->
-  AssignmentStmt  {% id %}
+  AssignmentStmt {% id %}
   | FunctionDecl {% id %}
-  | Primary    {% id %}
+  | CallExpr   {% id %}
   | ExportStmt {% id %}
   | ForStmt    {% id %}
   | IfStmt     {% id %}
   | ReturnStmt {% id %}
+  | ThrowStmt  {% id %}
   | WhileStmt  {% id %}
+  | StringLiteral {% id %} # comments
 
 ExportStmt ->
   %kw_export __ DeclarationStmt
     {% (d) => new stmt.ExportStatement(d[2]) %}
 
+CallExpr ->
+  Primary _ %lparen _ ArgList _ %rparen
+    {% (d) => new expr.CallExpression(d[0], d[4]) %}
+
+IfExpr ->
+  Primary __ %kw_if __ OpExpr __ %kw_else __ ExprBlock
+    {% (d) => new expr.IfExpression(d[4], d[0], d[8]) %}
+  # | ForExpr
+  #   {% id %}
+
+ForExpr ->
+  ExprBlock __ %kw_for __ Identifier __ %kw_in __ Expr
+    {% (d) => new expr.ForMapExpression(d[4], d[8], d[0]) %}
+
 SwitchExpr ->
   %kw_switch (_ Atom):? _ %lbrace _ SwitchBody _ %rbrace
     {% (d) => new expr.SwitchExpression(d[1]?.[1], d[5].cases, d[5].defaultCase) %}
 
-IfExpr ->
-  Expr __ %kw_if __ BooleanExpr __ %kw_else __ ReturnExpr
-    {% (d) => new expr.IfExpression(d[4], d[0], d[8]) %}
-
 IfStmt ->
-  %kw_if __ BooleanExpr _ Block (_ %kw_else _ Block):?
-    {% (d) => new stmt.IfStatement(d[2], d[4], d[5]?.[3]) %}
+  %kw_if __ OpExpr _ StmtBlock (_ ElseClause):?
+    {% (d) => new stmt.IfStatement(d[2], d[4], d[5]?.[1]) %}
+ElseClause ->
+  %kw_else _ StmtBlock
+    {% nth(2) %}
 
 ForStmt ->
-  %kw_for __ Identifier __ %kw_in __ Expr _ Block
+  %kw_for __ Identifier __ %kw_in __ Expr __ StmtBlock
     {% (d) => new stmt.ForInStatement(d[2], d[6], d[8]) %}
-
-WhileStmt ->
-  %kw_while __ BooleanExpr _ Block
-    {% (d) => new stmt.WhileStatement(d[2], d[4]) %}
 
 ReturnStmt ->
   %kw_return (_ Atom):?
     {% (d) => new stmt.ReturnStatement(d[1]?.[1]) %}
 
+ThrowStmt ->
+  %kw_throw __ ExprBlock
+    {% (d) => new stmt.ThrowStatement(d[2]) %}
+
+WhileStmt ->
+  %kw_while __ OpExpr _ StmtBlock
+    {% (d) => new stmt.WhileStatement(d[2], d[4]) %}
+
 SwitchBody ->
   SwitchCaseList (_ SwitchElseCase):?
     {% (d) => ({cases: d[0], defaultCase: d[1]?.[1]}) %}
-
 SwitchCaseList ->
-  SwitchCase _ %semi
-    {% (d) => [d[0]] %}
-  | SwitchCaseList _ SwitchCase _ %semi
+  SwitchCaseList _ SwitchCase
     {% (d) => [...d[0], d[2]] %}
-
+  | SwitchCase
+    {% (d) => [d[0]] %}
 SwitchCase ->
-  Expr _ %eq %gt _ ReturnExpr
+  Expr _ %eq %gt _ ExprBlock
     {% (d) => [d[0], d[5]] %}
-
 SwitchElseCase ->
-  %kw_else _ %eq %gt _ ReturnExpr _ %semi
+  %kw_else _ %eq %gt _ ExprBlock
     {% nth(5) %}
 
-BooleanExpr ->
-  ValueExpr {% id %}
-  | OpExpr  {% id %}
-  | Number  {% id %}
-
-Deref ->
-  Deref _ %dot Identifier
+Index ->
+  Primary _ %lbracket _ Expr _ %rbracket
+    {% (d) => new expr.DereferenceExpression(d[0], d[4]) %}
+  | Primary _ %dot Identifier
     {% (d) => new expr.DereferenceExpression(d[0], d[3]) %}
-  | Primary
-    {% id %}
 
 Primary ->
-  Primary _ %dot Identifier
-    {% (d) => new expr.DereferenceExpression(d[0], d[3]) %}
-  | Primary _ %lparen _ ArgList _ %rparen
-    {% (d) => new expr.CallExpression(d[0], d[4]) %}
-  | Atom
-    {% id %}
+  Index      {% id %}
+  | CallExpr {% id %}
+  | Atom     {% id %}
+
+Reference ->
+  Index {% id %}
+  | Identifier {% id %}
 
 Atom ->
-  ParendExpr   {% id %}
-  | Identifier {% id %}
-  | Number {% id %}
-  | String {% id %}
+  %lparen _ Expr _ %rparen {% nth(2) %}
+  | Array         {% id %}
+  | Identifier    {% id %}
+  | NumberLiteral {% id %}
+  | StringLiteral {% id %}
+  | TypeLiteral   {% id %}
 
 Identifier ->
-  (%dollar | %identifier) {%
-    (d) => new expr.IdentifierExpression(d[0][0].value)
+  %identifier {%
+    (d) => new expr.IdentifierExpression(d[0].value)
   %}

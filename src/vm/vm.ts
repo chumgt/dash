@@ -1,12 +1,12 @@
 import fs from "node:fs";
 import paths from "node:path";
-import { DatumType } from "./data";
-import { DashError } from "./error";
-import { Expression } from "./expression";
-import { Block, NodeKind } from "./node";
-import { ANY, FLOAT32, FLOAT64, FUNCTION, INT16, INT32, INT64, INT8, OBJECT, STRING, TYPE, Type, ValueType } from "./type";
-import { FunctionValue, Value } from "./value";
-import * as parsing from "./parse";
+import { DatumType } from "../data.js";
+import { DashError } from "../error.js";
+import { Expression } from "../expression.js";
+import { Block, NodeKind } from "../node.js";
+import { ANY, FLOAT32, FLOAT64, FUNCTION, INT16, INT32, INT64, INT8, OBJECT, STRING, TYPE, Type } from "./type.js";
+import { Value } from "./value.js";
+import * as parsing from "../parse.js";
 
 export type Builtins = {
   types: Record<DatumType, any>;
@@ -77,10 +77,10 @@ export class Vm {
     this.namespaces[ns] = dir;
   }
 
-  public addExport(identifier: string): void {
+  public addExport(identifier: string, value?: Value): void {
     if (! this.has(identifier))
       throw new DashError("unknown identifier " + identifier);
-    else if (this.exports.has(identifier))
+    if (this.exports.has(identifier))
       throw new DashError(identifier + " already exported");
 
     this.exports.add(identifier);
