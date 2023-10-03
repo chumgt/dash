@@ -1,10 +1,12 @@
 import { DashError } from "./error.js";
 import { Expression, IdentifierExpression, ValueExpression } from "./expression.js";
-import { AssignmentTarget, Block, Exportable, Node, NodeKind } from "./node.js";
-import { FunctionDeclToken, ParameterToken } from "./token.js";
-import { FUNCTION, OBJECT, ValueType } from "./vm/type.js";
+import { FnParameters } from "./function.js";
+import { AssignmentTarget, Block, Node, NodeKind } from "./node.js";
+import { ParameterToken } from "./token.js";
+import { ValueType } from "./type.js";
 import { DashFunctionValue, FunctionValue, Value, getValueIteratorFn } from "./vm/value.js";
 import { Vm } from "./vm/vm.js";
+import * as types from "./vm/types.js";
 
 export enum StatementKind {
   Assignment,
@@ -19,16 +21,46 @@ export enum StatementKind {
   While
 }
 
+export enum FlowType {
+  Return,
+  Throw
+}
+
 export interface DeclarationInfo {
   annotations: Expression[];
   returnType: Expression;
+}
+
+export interface Flow {
+  type: FlowType;
+  value?: Value;
 }
 
 export abstract class Statement extends Node {
   public constructor(public type: StatementKind) {
     super(NodeKind.Statement);
   }
-  public abstract apply(vm: Vm): void;
+  /**
+   * Applies this statement to the specified scope.
+   * A return value implies a change in control flow.
+   * @param vm
+   */
+  public abstract apply(vm: Vm): Value | void;
+}
+
+export class StatementBlock extends Block {
+  public constructor(override body: Statement[]) {
+    super(body);
+  }
+
+  public apply(vm: Vm) {
+    const sub = vm.sub();
+    for (let stmt of this.body) {
+      const returned = stmt.apply(vm);
+      if (returned)
+        return returned;
+    }
+  }
 }
 
 export class AssignmentStatement extends Statement {
@@ -66,7 +98,7 @@ export class DeclarationStatement extends AssignmentStatement {
     if (this.info.annotations?.length > 0) {
       for (let anno of this.info.annotations) {
         const func = anno.evaluate(vm);
-        if (! FUNCTION.isAssignable(func.type))
+        if (! types.FUNCTION.isAssignable(func.type))
           throw new DashError("annotation must be a fn");
         value = (func as FunctionValue).call(vm, [value]);
       }
@@ -83,30 +115,36 @@ export class FunctionDeclaration extends Statement {
       protected identifier: IdentifierExpression,
       protected params: ParameterToken[],
       protected body: Expression,
-      protected returnType?: Expression) {
+      public info: DeclarationInfo) {
     super(StatementKind.Function);
     this.target = identifier;
   }
 
   public override apply(vm: Vm): void {
-    const val = new DashFunctionValue(this.params, this.body, vm);
-    this.identifier.assign(val, vm);
-  }
-/*
-  block: Expression;
-  params: ParameterToken[];
-
-  public constructor(token: FunctionExprToken) {
-    super(ExpressionKind.Function);
-    this.block = token.block;
-    this.params = token.params;
+    const val = new DashFunctionValue(this.getParameters(vm), this.body, vm);
+    vm.defineFn(this.identifier.getKey(), val);
   }
 
-  public override evaluate(vm: Vm): Value {
-    const val = new FunctionValue(this.params, this.block, vm);
-    return val;
+  protected getParameters(vm: Vm): FnParameters {
+    const params: FnParameters = [];
+    for (let param of this.params) {
+      if (param.typedef) {
+        const res = param.typedef.evaluate(vm);
+        if (! types.TYPE.isAssignable(res.type))
+          throw new DashError(`${param.name} is not typedef'd to a type`);
+        params.push({
+          name: param.name,
+          type: res.data
+        });
+      } else {
+        params.push({
+          name: param.name,
+          type: types.ANY
+        });
+      }
+    }
+    return params;
   }
-  */
 }
 
 export class DestrAssignmentStatement extends Statement {
@@ -149,7 +187,7 @@ export class ForInStatement extends Statement {
   public constructor(
       public identifier: IdentifierExpression,
       public iterExpr: Expression,
-      public block: Block) {
+      public block: StatementBlock) {
     super(StatementKind.For);
   }
 
@@ -172,28 +210,28 @@ export class ForInStatement extends Statement {
 export class IfStatement extends Statement {
   public constructor(
       public condition: Expression,
-      public block: Block,
-      public elseBlock?: Block) {
+      public block: StatementBlock,
+      public elseBlock?: StatementBlock) {
     super(StatementKind.If);
   }
 
   public override apply(vm: Vm) {
     const cond = this.condition.evaluate(vm);
     if (cond.data) {
-      this.block.apply(vm);
+      return this.block.apply(vm);
     } else if (this.elseBlock) {
-      this.elseBlock.apply(vm);
+      return this.elseBlock.apply(vm);
     }
   }
 }
 
 export class ReturnStatement extends Statement {
-  public constructor(public expr?: Expression) {
+  public constructor(public expr: Expression) {
     super(StatementKind.Return);
   }
 
-  public override apply(vm: Vm): void {
-    throw new Error("??");
+  public override apply(vm: Vm) {
+    return this.expr.evaluate(vm);
   }
 }
 
@@ -210,7 +248,7 @@ export class ThrowStatement extends Statement {
 export class WhileStatement extends Statement {
   public constructor(
       public condition: ValueExpression,
-      public block: Block) {
+      public block: StatementBlock) {
     super(StatementKind.While);
   }
 

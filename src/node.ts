@@ -37,6 +37,9 @@ export interface Symbolic {
 export type ChunkNode =
     Expression | Block;
 
+export interface Visitor<T extends Node> {
+  visit(node: T): void;
+}
 export class Node {
   public constructor(public kind: NodeKind) { }
 
@@ -45,12 +48,8 @@ export class Node {
   }
 }
 
-export interface Visitor<T extends Node> {
-  visit(node: T): void;
-}
-
 export class Block extends Node {
-  public constructor(public body: Statement[]) {
+  public constructor(public body: Node[]) {
     super(NodeKind.Block);
   }
 
@@ -60,54 +59,7 @@ export class Block extends Node {
       node.accept(visitor);
   }
 
-  public apply(vm: Vm): void {
-    for (let stmt of this)
-      stmt.apply(vm);
-  }
-
   public [Symbol.iterator]() {
     return this.body.values();
   }
 }
-
-// export class Chunk
-
-export class StatementList extends Node {
-  public constructor(public body: readonly Statement[]) {
-    super(NodeKind.StatementList);
-  }
-
-  public apply(vm: Vm) {
-    for (let stmt of this.body)
-      stmt.apply(vm);
-  }
-
-  public [Symbol.iterator]() {
-    return this.body.values();
-  }
-}
-
-// export class StatementBlock extends Block {
-//   public constructor(override body: StatementBlockBody) {
-//     super(NodeKind.Block, body);
-//   }
-
-//   public apply(vm: Vm): void {
-//     for (let stmt of this.body)
-//       stmt.apply(vm);
-//   }
-// }
-
-// export class ModuleBlock extends Block {
-//   public constructor(override body: ModuleBlockBody = [ ]) {
-//     super(NodeKind.Module, body);
-//   }
-
-//   public apply(vm: Vm): Value | void {
-//     if (this.body.length === 0)
-//       throw new DashError("empty chunk");
-
-//     for (let child of this.body)
-//       child.apply(vm);
-//   }
-// }

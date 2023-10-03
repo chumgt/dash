@@ -1,28 +1,18 @@
-import { Expression } from "./expression";
-import { FunctionValue, Value } from "./vm/value";
+import { Type } from "./type.js";
 
-export interface CallContext {
-  target: Value;
-  arguments: Value[];
+export interface FnArgument {
+  type: Type;
 }
 
-export interface FunctionParameter {
+export interface FnParameter {
+  name: string;
+  type: Type;
+}
+
+export type FnArguments = FnArgument[];
+export type FnParameters = FnParameter[];
+
+export interface FnSignature {
   name?: string;
+  params: FnParameters;
 }
-
-export interface FunctionSignature {
-  name?: string;
-  params: FunctionParameter[];
-}
-
-// export class FunctionOverloads {
-//   protected readonly impls: Map<FunctionSignature, Expression>;
-
-//   public constructor(impls?: Map<FunctionSignature, Expression>) {
-//     this.impls = impls ?? new Map();
-//   }
-
-//   public getMatch(): FunctionValue {
-//     // new FunctionValue()
-//   }
-// }

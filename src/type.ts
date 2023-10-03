@@ -1,0 +1,167 @@
+import { DatumType } from "./data.js";
+import { DashError } from "./error.js";
+import { BinaryOpKind, UnaryOpKind } from "./expression.js";
+import { Value } from "./vm/value.js";
+
+export type BinaryOperatorFunction =
+    (a: Value, b: Value) => Value;
+
+export type UnaryOperatorFunction =
+    (a: Value) => Value;
+
+export type BinaryOperatorMap = {
+  [K in keyof typeof BinaryOpKind]: BinaryOperatorFunction;
+};
+
+export type UnaryOperatorMap = {
+  [K in keyof typeof UnaryOpKind]: UnaryOperatorFunction;
+};
+
+export interface FieldInfo {
+  name: string;
+  type: Type;
+}
+
+export interface TypeHeader {
+  name: string;
+}
+
+export interface ValueTypeHeader extends TypeHeader {
+  byteLength?: number;
+}
+
+export interface BuiltinTypeFactory {
+  getType(type: DatumType): Type;
+}
+
+export interface JSType<T> {
+  wrap(value: T): Value;
+}
+
+export class Type {
+  public constructor(
+      public readonly superType?: ValueType,
+      public readonly header?: Readonly<TypeHeader>) {}
+
+  public get name(): string {
+    return this.header?.name ?? this.constructor.name;
+  }
+
+  public *ascend(): Iterable<Type> {
+    let target: Type = this;
+    while (target.superType) {
+      target = target.superType;
+      yield target;
+    }
+  }
+
+  public extends(type: Type): boolean {
+    for (let superType of this.ascend()) {
+      if (superType === type)
+        return true;
+    }
+    return false;
+  }
+
+  public getBase(): Type {
+    let base: Type = this;
+    for (let superType of this.ascend())
+      base = superType;
+    return base;
+  }
+
+  public getDepth(from?: Type): number {
+    let depth = 0;
+    for (let superType of this.ascend()) {
+      depth += 1;
+
+      if (from === superType)
+        break;
+    }
+    return depth;
+  }
+
+  public getDistance(type: Type): number {
+    if (this.isImplicitCastableTo(type))
+      return 0;
+
+    if (type.isAssignable(this))
+      return this.getDepth(type);
+
+    return Number.NaN;
+  }
+
+  public isAssignable(type: Type): boolean {
+    return (type === this)
+        || type.isImplicitCastableTo(this)
+        || type.extends(this);
+  }
+
+  public isCastableTo(type: Type): boolean {
+    if (type === this || this.isImplicitCastableTo(type))
+      return true;
+    if (this.superType)
+      return this.superType.isCastableTo(type);
+    return false;
+  }
+
+  public isImplicitCastableTo(type: Type): boolean {
+    if (type === this)
+      return true;
+    if (this.extends(type))
+      return true;
+    return false;
+  }
+
+  public isTypeOf(t: Type): boolean {
+    if (this === t || this.extends(t))
+      return true;
+    if (this.superType?.isTypeOf(t))
+      return true;
+    return false;
+  }
+}
+
+export class ValueType extends Type {
+  public static biggest<T0 extends ValueType, T1 extends ValueType>(a: T0, b: T1): T0 | T1 {
+    if (a.header?.byteLength && b.header?.byteLength) {
+      return (a.header.byteLength >= b.header.byteLength) ? a : b;
+    }
+    throw new DashError("cannot compare sizes of non-primitive types");
+  }
+
+  public operators: Partial<BinaryOperatorMap | UnaryOperatorMap>;
+  public fields: Record<string, FieldInfo>;
+
+  public constructor(superType?: ValueType,
+      override header?: Readonly<ValueTypeHeader>) {
+    super(superType, header);
+    this.operators = { };
+    this.fields = { };
+  }
+
+  public cast(value: Value): Value | never {
+    throw new DashError("cannot cast");
+  }
+  public from(type: DatumType, value: any): Value {
+    throw new DashError(`cannot convert ${type} to ${this.name}`);
+  }
+
+  public wrap(value: any): Value {
+    if (this.superType)
+      return this.superType.wrap(value);
+    throw new DashError(`cannot wrap ${typeof value} with ${this.name}`);
+  }
+
+  public getOperator(op: BinaryOpKind): BinaryOperatorFunction | undefined;
+  public getOperator(op: UnaryOpKind): UnaryOperatorFunction | undefined;
+  public getOperator(op: BinaryOpKind | UnaryOpKind): BinaryOperatorFunction | UnaryOperatorFunction | undefined {
+    return this.operators[op] ?? this.superType?.getOperator(op as any);
+  }
+}
+
+/*
+Lua a ~= b to not (a == b), a > b to b < a, and a >= b to b <= a.
+ */
+
+// export class TypeManager { }

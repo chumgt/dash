@@ -1,8 +1,7 @@
 @{%
   function postInt(type: data.DatumType, base: number) {
     return function (token: any) {
-      return ({
-        type, base,
+      return ({ base, type,
         "value": token[0].value,
         "source": token[0]
       });
@@ -19,13 +18,13 @@ NumberLiteral ->
 FloatLiteral ->
   %float
     {% (d) => ({
-      "type": data.DatumType.Float32,
+      "type": data.DatumType.Float64,
       "value": d[0].value,
-      source: d[0]
+      "source": d[0]
     }) %}
 
 IntegerLiteral ->
-  %base2 {% postInt(data.DatumType.Int32, 2) %}
-  | %base8 {% postInt(data.DatumType.Int32, 8) %}
-  | %base10 {% postInt(data.DatumType.Int32, 10) %}
-  | %base16 {% postInt(data.DatumType.Int32, 16) %}
+  %base2 {% postInt(data.DatumType.Int64, 2) %}
+  | %base8 {% postInt(data.DatumType.Int64, 8) %}
+  | %base10 {% postInt(data.DatumType.Int64, 10) %}
+  | %base16 {% postInt(data.DatumType.Int64, 16) %}

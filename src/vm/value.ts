@@ -1,12 +1,16 @@
 import { DashError } from "../error.js";
 import { Expression } from "../expression.js";
-import { ParameterToken } from "../token.js";
-import { ValueType } from "./type.js";
+import { FnParameters } from "../function.js";
+import { ValueType } from "../type.js";
 import { Vm } from "./vm.js";
-import * as types from "./type.js";
+import * as types from "./types.js";
+
+export interface NativeFunctionContext {
+  vm: Vm;
+}
 
 export type NativeFunction =
-    (args: Value[]) => Value | never;
+    (args: Value[], ctx: NativeFunctionContext) => Value | never;
 
 export class Value {
   public static readonly ITER_STOP = new Value(types.INT8, "STOP");
@@ -26,7 +30,10 @@ export class Value {
 }
 
 export abstract class FunctionValue extends Value {
-  public constructor(data: any = "<fn>", properties?: any) {
+  public constructor(
+      public params?: FnParameters,
+      data: any = "<fn>",
+      properties?: any) {
     super(types.FUNCTION, data, properties);
   }
 
@@ -37,40 +44,42 @@ export abstract class FunctionValue extends Value {
     const values = args.map(x => x.evaluate(vm));
     return this.call(vm, values);
   }
-}
 
-export interface FunctionSignature {
-  params: { };
-}
+  public mapArgsToParams(vm: Vm, args: Value[]): Record<string, Value> {
+    if (! this.params) {
+      return {};
+    }
 
-export class DashFunctionValue extends FunctionValue {
-  public constructor(
-      public params: ParameterToken[],
-      public block: Expression,
-      public context: Vm) {
-    super();
-  }
-
-  public apply(vm: Vm, args: Value[]): Value {
     if (args.length !== this.params.length)
       throw new DashError("incorrect arg count");
 
+    const values: Record<string, Value> = {};
     for (let i = 0; i < args.length; i++) {
       const arg = args[i];
       const param = this.params[i];
 
-      if (param.typedef) {
-        const expectedType = param.typedef?.evaluate(vm);
-        if (! expectedType.type.extends(types.TYPE))
-          throw new DashError("typedef resolved to non-type");
+      if (! param.type.isAssignable(arg.type))
+        throw new DashError(`arg ${i} expected ${param.type} got ${arg.type.name}`);
 
-        const type = expectedType.data;
-        if (! type.isAssignable(arg.type))
-          throw new DashError(`arg ${i} incompatible types ${arg.type.name} and ${expectedType.data.name}`);
-      }
-
-      vm.assign(param.name, arg);
+      values[param.name] = arg;
     }
+
+    return values;
+  }
+}
+
+export class DashFunctionValue extends FunctionValue {
+  public constructor(params: FnParameters,
+      public block: Expression,
+      public context: Vm) {
+    super(params);
+  }
+
+  public apply(vm: Vm, args: Value[]): Value {
+    const argMap = this.mapArgsToParams(vm, args);
+
+    for (const [key, value] of Object.entries(argMap))
+      vm.assign(key, value);
 
     return this.block.evaluate(vm);
   }
@@ -82,14 +91,13 @@ export class DashFunctionValue extends FunctionValue {
 }
 
 export class NativeFunctionValue extends FunctionValue {
-  public constructor(
-      public params: ParameterToken[] | undefined,
-      public override data: NativeFunction) {
-    super(data);
+  public constructor(public override data: NativeFunction,
+      params?: FnParameters) {
+    super(params, data);
   }
 
   public override apply(vm: Vm, args: Value[]): Value {
-    return this.data(args);
+    return this.data(args, {vm});
   }
 
   public override call(vm: Vm, args: Value[]): Value {
@@ -147,7 +155,7 @@ export function newRangeIter(start: number, stop: number, step: number): Value {
 }
 
 export function wrapFunction(fn: NativeFunction): Value {
-  return new NativeFunctionValue(undefined, fn);
+  return new NativeFunctionValue(fn);
 }
 
 export function wrapObject(obj: object): Value | never {
@@ -158,7 +166,13 @@ export function wrapObject(obj: object): Value | never {
   return new Value(types.OBJECT, props);
 }
 
-export function wrap(jsValue: any): Value | never {
+export function wrap(jsValue: any, type?: ValueType): Value | never {
+  // if (jsValue && (jsValue instanceof Value))
+  //   return jsValue;
+  if (type) {
+    return type.wrap(jsValue);
+  }
+
   switch (typeof jsValue) {
     case "boolean":
       return new Value(types.INT8, jsValue ? 1 : 0);

@@ -6,10 +6,10 @@ AssignmentStmt ->
   | ReassignmentStmt    {% id %}
 
 DeclarationStmt ->
-  AnnotationList _ Identifier _ %colon %colon:? (_ Primary):? _ %eq _ ExprBlock
-    {% (d) => new stmt.DeclarationStatement(d[2], d[10], {
-      "annotations": d[0],
-      "returnType": d[6]?.[1]
+  (AnnotationList _):? Identifier _ %colon %colon:? (_ Primary):? _ %eq _ ExprBlock
+    {% (d) => new stmt.DeclarationStatement(d[1], d[9], {
+      "annotations": d[0]?.[0],
+      "returnType": d[5]?.[1]
     }) %}
   | FunctionDecl
     {% id %}
@@ -28,7 +28,6 @@ Annotation ->
 AnnotationList ->
   AnnotationList __ Annotation {% (d) => [...d[0], d[2]] %}
   | Annotation {% (d) => [d[0]] %}
-  | null {% () => [] %}
 
 DestrLBody ->
   DestrLBody _ %comma _ Identifier

@@ -11,7 +11,10 @@ Function ->
 
 FunctionDecl ->
   %kw_fn __ Identifier _ %lparen _ ParamList _ %rparen (_ %colon _ Primary):? _ FunctionBody
-    {% (d) => new stmt.FunctionDeclaration(d[2], d[6], d[11], d[9]?.[3]) %}
+    {% (d) => new stmt.FunctionDeclaration(d[2], d[6], d[11], {
+      "annotations": [],
+      "returnType": d[9]?.[3]
+    }) %}
 
 FunctionBody ->
   %eq _ Expr

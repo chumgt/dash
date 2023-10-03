@@ -4,10 +4,11 @@
   import * as expr from "../expression.js";
   import * as node from "../node.js";
   import * as stmt from "../statement.js";
+  import { DashParseError } from "../parse.js";
 
   /** Returns a Nearley postprocessor which returns
    * `d[index0][index1][index2][...][indexN]`. */
-  function nth(index0: number, ...indices: readonly number[]) {
+  export function nth(index0: number | string, ...indices: readonly (number | string)[]) {
     return function (d) {
       let value = d[index0];
       for (const index of indices)
@@ -16,11 +17,25 @@
     };
   }
 
+  function annotate(expr: any, annots: expr.Expression[]) {
+    if (! expr.info)
+      throw new DashParseError("cannot annotate expr kind " + expr.kind);
+
+    if (typeof expr.info.annotations === "undefined")
+      expr.info.annotations = [];
+    if (Array.isArray(expr.info.annotations))
+      expr.info.annotations.push(...annots);
+    else
+      throw new Error("annotations is not an array! hmm...");
+    return expr;
+  }
+
   // Some tokens have `as any` because Nearley-to-Typescript doesn't like it otherwise.
   const lexer = moo.compile({
     identifier: {
       match: /[a-zA-Z_][a-zA-Z0-9_]*/,
       type: moo.keywords({
+        "kw_as": "as",
         "kw_if": "if",
         "kw_in": "in",
         "kw_else": "else",
@@ -118,24 +133,28 @@
 
 Chunk ->
   _ StmtBlockBody _
-    {% (d) => new node.Block(d[1]) %}
+    {% (d) => new stmt.StatementBlock(d[1]) %}
   | _ Expr _
     {% nth(1) %}
 
 ExprBlock ->
   %lbrace _ StmtBlockBody _ Expr _ %rbrace
     {% (d) => new expr.BlockExpression(
-        new node.Block(d[2]), d[4]) %}
+        new stmt.StatementBlock(d[2]), d[4]) %}
+  |  %lbrace _ StmtBlockBody _ ReturnStmt _ %rbrace
+    {% (d) => new expr.BlockExpression(
+        new stmt.StatementBlock(d[2]), d[4].expr) %}
   | Expr
-    {% (d) => new expr.BlockExpression(new node.Block([]), d[0]) %}
+    {% (d) => new expr.BlockExpression(
+        new stmt.StatementBlock([]), d[0]) %}
 
 StmtBlock ->
   %lbrace _ StmtBlockBody _ %rbrace
-    {% (d) => new node.Block(d[2]) %}
+    {% (d) => new stmt.StatementBlock(d[2]) %}
   | Stmt _ %semi
-    {% (d) => new node.Block([d[0]]) %}
+    {% (d) => new stmt.StatementBlock([d[0]]) %}
   | %semi
-    {% (d) => new node.Block([]) %}
+    {% (d) => new stmt.StatementBlock([]) %}
 
 StmtBlockBody ->
   StmtBlockBody _ Stmt {% (d) => [...d[0], d[2]] %}
@@ -144,6 +163,7 @@ StmtBlockBody ->
 
 Expr ->
   OpExpr     {% id %}
+  | CastExpr {% id %}
   | Function {% id %}
   | IfExpr     {% id %}
   | SwitchExpr {% id %}
@@ -161,12 +181,17 @@ Stmt ->
   | StringLiteral {% id %} # comments
 
 ExportStmt ->
-  %kw_export __ DeclarationStmt
-    {% (d) => new stmt.ExportStatement(d[2]) %}
+  (AnnotationList _):? %kw_export __ DeclarationStmt
+    {% (d) => new stmt.ExportStatement(
+        d[0]?.[0] ? annotate(d[3], d[0][0]) : d[3]) %}
 
 CallExpr ->
   Primary _ %lparen _ ArgList _ %rparen
     {% (d) => new expr.CallExpression(d[0], d[4]) %}
+
+CastExpr ->
+  Primary _ %kw_as _ Primary
+    {% (d) => new expr.CastExpression(d[0], d[4]) %}
 
 IfExpr ->
   Primary __ %kw_if __ OpExpr __ %kw_else __ ExprBlock
@@ -194,8 +219,8 @@ ForStmt ->
     {% (d) => new stmt.ForInStatement(d[2], d[6], d[8]) %}
 
 ReturnStmt ->
-  %kw_return (_ Atom):?
-    {% (d) => new stmt.ReturnStatement(d[1]?.[1]) %}
+  %kw_return _ Expr
+    {% (d) => new stmt.ReturnStatement(d[2]) %}
 
 ThrowStmt ->
   %kw_throw __ ExprBlock

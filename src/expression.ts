@@ -1,11 +1,13 @@
 import { DatumType } from "./data.js";
 import { DashError } from "./error.js";
-import { AssignmentTarget, Block, Node, NodeKind, Visitor } from "./node.js";
+import { AssignmentTarget, Node, NodeKind, Visitor } from "./node.js";
 import { FunctionExprToken, ParameterToken, TypeToken, ValueToken } from "./token.js";
-import { ValueType } from "./vm/type.js";
-import { DashFunctionValue, FunctionValue, NativeFunctionValue, Value, getValueIteratorFn, newArray } from "./vm/value.js";
+import { ValueType } from "./type.js";
+import { FnParameters } from "./function.js";
+import { DashFunctionValue, FunctionValue, Value, getValueIteratorFn, newArray } from "./vm/value.js";
 import { Vm } from "./vm/vm.js";
-import * as types from "./vm/type.js";
+import * as types from "./vm/types.js";
+import { StatementBlock } from "./statement.js";
 
 export enum ExpressionKind {
   /* TODO: These are strings for development as it makes it easier to read the
@@ -93,16 +95,22 @@ export interface Expression extends Node {
 export class BlockExpression extends Node
 implements Expression {
   public constructor(
-      public block: Block,
-      public returnExpr: Expression) {
+      public block: StatementBlock,
+      public returnExpr?: Expression) {
     super(NodeKind.Expression);
   }
 
   public get type() { return ExpressionKind.Block }
 
   public evaluate(vm: Vm): Value {
-    this.block.apply(vm);
-    return this.returnExpr.evaluate(vm);
+    const returnValue = this.block.apply(vm);
+    if (returnValue)
+      return returnValue;
+
+    if (this.returnExpr)
+      return this.returnExpr.evaluate(vm);
+
+    throw new DashError("block did not return anything");
   }
 }
 
@@ -185,21 +193,23 @@ implements Expression {
 export class CastExpression extends Node
 implements Expression {
   public constructor(
-      public typeDef: Expression,
-      public value: Expression) {
+      public expr: Expression,
+      public target: Expression) {
     super(NodeKind.Expression);
   }
 
   public get type() { return ExpressionKind.Block }
 
   public evaluate(vm: Vm): Value {
-    const type = this.typeDef.evaluate(vm);
-    if (! type.type.extends(types.TYPE))
+    const type = this.target.evaluate(vm);
+    if (! types.TYPE.isAssignable(type.type))
       throw new DashError("cast to non-type");
 
-    const value = this.value.evaluate(vm);
-    throw new DashError("no casting!")
-    // return vm.cast(value, type);
+    const value = this.expr.evaluate(vm);
+    if (! value.type.isCastableTo(type.data))
+      throw new DashError(`cannot cast ${value.type.name} to ${type.data.name}`)
+
+    return new Value(type.data, value.data);
   }
 }
 
@@ -248,8 +258,29 @@ implements Expression {
   public get type() { return ExpressionKind.Block }
 
   public evaluate(vm: Vm): Value {
-    const val = new DashFunctionValue(this.params, this.block, vm);
+    const val = new DashFunctionValue(this.getParameters(vm), this.block, vm);
     return val;
+  }
+
+  protected getParameters(vm: Vm): FnParameters {
+    const params: FnParameters = [];
+    for (let param of this.params) {
+      if (param.typedef) {
+        const res = param.typedef.evaluate(vm);
+        if (! types.TYPE.isAssignable(res.type))
+          throw new DashError(`${param.name} is not typedef'd to a type`);
+        params.push({
+          name: param.name,
+          type: res.data
+        });
+      } else {
+        params.push({
+          name: param.name,
+          type: types.ANY
+        });
+      }
+    }
+    return params;
   }
 }
 

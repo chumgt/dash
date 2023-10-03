@@ -17,7 +17,7 @@ export enum DatumType {
   Any = Function | Number | String | Type
 }
 
-export interface DatumTypeCastMap {
+export interface DatumTypeCastMapping {
   [DatumType.Float32]: [DatumType.Float64, DatumType.Int8, DatumType.Int16, DatumType.Int32, DatumType.Int64],
   [DatumType.Float64]: [DatumType.Float32, DatumType.Int8, DatumType.Int16, DatumType.Int32, DatumType.Int64],
   [DatumType.Int8]: [DatumType.Float32, DatumType.Float64, DatumType.Int16, DatumType.Int32, DatumType.Int64],
@@ -25,3 +25,35 @@ export interface DatumTypeCastMap {
   [DatumType.Int32]: [DatumType.Float32, DatumType.Float64, DatumType.Int8, DatumType.Int16, DatumType.Int64],
   [DatumType.Int64]: [DatumType.Float32, DatumType.Float64, DatumType.Int8, DatumType.Int32, DatumType.Int32]
 }
+
+export const typeToNameMap = {
+  [DatumType.Float]: "float",
+  [DatumType.Float32]: "f32",
+  [DatumType.Float64]: "f64",
+  [DatumType.Integer]: "int",
+  [DatumType.Int8]: "i8",
+  [DatumType.Int16]: "i16",
+  [DatumType.Int32]: "i32",
+  [DatumType.Int64]: "i64",
+  [DatumType.Function]: "func",
+  [DatumType.String]: "str",
+  [DatumType.Number]: "num",
+  [DatumType.Type]: "type",
+  [DatumType.Any]: "any"
+} as const;
+
+export const nameToTypeMap = {
+  "float": DatumType.Float,
+  "f32": DatumType.Float32,
+  "f64": DatumType.Float64,
+  "int": DatumType.Integer,
+  "i8": DatumType.Int8,
+  "i16": DatumType.Int16,
+  "i32": DatumType.Int32,
+  "i64": DatumType.Int64,
+  "func": DatumType.Function,
+  "str": DatumType.String,
+  "num": DatumType.Number,
+  "type": DatumType.Type,
+  "any": DatumType.Any
+} as const;

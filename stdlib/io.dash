@@ -1,4 +1,5 @@
 __write ::= write
 
 export write ::= __write
-export fn writeln(msg) = write(msg, "\n")
+export fn writeln() = writeln("")
+export fn writeln(msg: str) = write(msg, "\n")

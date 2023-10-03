@@ -1,11 +1,11 @@
 iters ::= import("dash:iter")
 range ::= iters.range
 
-fn sieve(n: int32) {
+fn sieve(n: i32) {
   multiples := array()
   primes := array()
 
-  for i in 2..(n+1) {
+  for i in 2..n+1 {
     if !multiples.has(i) {
       primes = primes.add(i)
       for j in range(i**2, n + 1, i) {
