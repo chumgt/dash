@@ -65,8 +65,10 @@ function main() {
   env.defineBaseType(DatumType.Any, types.ANY)
 
   const vm = newVm(env);
-  for (let key of Object.keys(nameToTypeMap))
+  for (let key of Object.keys(nameToTypeMap)) {
+    vm.declare(key, {type: types.ANY});
     vm.assign(key, env.getBaseTypeAsValue(nameToTypeMap[key]));
+  }
 
   const code = args.eval ?? fs.readFileSync(args.file!, "utf-8");
   let checkpoint = Date.now();

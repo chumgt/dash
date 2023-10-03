@@ -4,7 +4,7 @@ import { FnParameters } from "./function.js";
 import { AssignmentTarget, Block, Node, NodeKind } from "./node.js";
 import { ParameterToken } from "./token.js";
 import { ValueType } from "./type.js";
-import { DashFunctionValue, FunctionValue, Value, getValueIteratorFn } from "./vm/value.js";
+import { DashFunctionValue, FunctionValue, Value } from "./vm/value.js";
 import { Vm } from "./vm/vm.js";
 import * as types from "./vm/types.js";
 
@@ -104,7 +104,9 @@ export class DeclarationStatement extends AssignmentStatement {
       }
     }
 
-    this.target.assign(value, vm);
+    const key = this.target.getKey();
+    vm.declare(key, {type: types.ANY});
+    vm.assign(key, value);
   }
 }
 
@@ -192,15 +194,22 @@ export class ForInStatement extends Statement {
   }
 
   public override apply(vm: Vm): void {
-    const iter = getValueIteratorFn(this.iterExpr.evaluate(vm), vm);
+    const iter = this.iterExpr.evaluate(vm);
     this.iterate(iter, vm);
   }
 
-  protected iterate(iterator: FunctionValue, vm: Vm) {
+  protected iterate(iterator: Value, vm: Vm) {
+    // if (! types.isIteratorObject(iterator, {vm}))
+    //   throw new DashError("not an iterator");
+
+    const isDoneFn = iterator.data.done as FunctionValue;
+    const nextFn = iterator.data.next as FunctionValue;
     const key = this.identifier.getKey();
     const sub = vm.sub();
+    sub.declare(key, {type: types.ANY});
     let value: Value;
-    while ((value = iterator.callExpr(vm, [])) !== Value.ITER_STOP) {
+    while (isDoneFn.call(vm, []).data === 0) {
+      const value = nextFn.call(vm, []);
       sub.assign(key, value);
       this.block.apply(sub);
     }

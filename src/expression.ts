@@ -4,10 +4,10 @@ import { AssignmentTarget, Node, NodeKind, Visitor } from "./node.js";
 import { FunctionExprToken, ParameterToken, TypeToken, ValueToken } from "./token.js";
 import { ValueType } from "./type.js";
 import { FnParameters } from "./function.js";
-import { DashFunctionValue, FunctionValue, Value, getValueIteratorFn, newArray } from "./vm/value.js";
+import { DashFunctionValue, FunctionValue, Value, newArray } from "./vm/value.js";
 import { Vm } from "./vm/vm.js";
 import * as types from "./vm/types.js";
-import { StatementBlock } from "./statement.js";
+import { DeclarationStatement, StatementBlock } from "./statement.js";
 
 export enum ExpressionKind {
   /* TODO: These are strings for development as it makes it easier to read the
@@ -331,24 +331,29 @@ implements Expression {
   public constructor(
       public identifier: IdentifierExpression,
       public iterExpr: Expression,
-      public expr: Expression) {
+      public expr: BlockExpression) {
     super(NodeKind.Expression);
   }
 
   public get type() { return ExpressionKind.For }
 
   public evaluate(vm: Vm): Value {
-    const iterFn = this.iterExpr.evaluate(vm);
-    const iter = getValueIteratorFn(iterFn, vm);
+    const iter = this.iterExpr.evaluate(vm);
     return this.collect(iter, vm);
   }
 
-  public collect(iterator: FunctionValue, vm: Vm) {
-    const key = this.identifier.getKey();
+  public collect(iterator: Value, vm: Vm) {
+    if (! types.isIteratorObject(iterator, {vm}))
+      throw new DashError("not an iterator");
+
     const values: Value[] = [ ];
+    const key = this.identifier.getKey();
+    const isDoneFn = iterator.data.done as FunctionValue;
+    const nextFn = iterator.data.next as FunctionValue;
     const sub = vm.sub();
-    let value: Value;
-    while ((value = iterator.callExpr(vm, [])) !== Value.ITER_STOP) {
+    sub.declare(key, {type: types.ANY});
+    while (isDoneFn.call(vm, []).data !== 1) {
+      const value = nextFn.call(vm, []);
       sub.assign(key, value);
       values.push(this.expr.evaluate(sub));
     }
@@ -371,7 +376,8 @@ export class SwitchExpression extends Node implements Expression {
 
     if (this.test) {
       const test = this.test.evaluate(vm);
-      context.declare("$", {type: test.type}, test);
+      context.declare("$", {type: test.type});
+      context.assign("$", test);
     }
 
     for (let caze of this.patterns) {
@@ -456,6 +462,26 @@ export class ArrayExpression extends ValueExpression {
       }
     }
     return newArray(vm, values);
+  }
+}
+
+export class ObjectExpression extends ValueExpression {
+  public constructor(public properties: DeclarationStatement[]) {
+    super({
+      kind: ExpressionKind.Value,
+      type: DatumType.Any,
+      value: { }
+    });
+  }
+
+  public override evaluate(vm: Vm): Value {
+    const sub = vm.sub();
+    const data = { };
+    for (let decl of this.properties) {
+      const key = decl.target.getKey();
+      data[key] = decl.valueExpr.evaluate(vm);
+    }
+    return new Value(types.OBJECT, data);
   }
 }
 

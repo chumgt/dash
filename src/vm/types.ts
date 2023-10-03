@@ -2,7 +2,8 @@ import { DashError } from "..";
 import { DatumType } from "../data";
 import { BinaryOpKind, UnaryOpKind } from "../expression";
 import { ValueType } from "../type";
-import { Value, newRangeIter, wrap, wrapFunction } from "./value";
+import { CallContext } from "./function";
+import { NativeFunctionContext, Value, newRangeIter, wrap, wrapFunction } from "./value";
 
 export type Builtins = Readonly<{
   types: Record<DatumType, any>;
@@ -28,6 +29,9 @@ ARRAY.operators[BinaryOpKind.Dereference] = (a, b) => {
 }
 
 export const ANY = new ValueType(undefined, {name: "any"});
+ANY.isAssignable = (type) => true;
+ANY.isImplicitCastableTo = (type) => true;
+ANY.isCastableTo = (type) => true;
 
 export const DATUM = new ValueType();
 export const NUMBER = new ValueType(DATUM, {name: "number"});
@@ -125,23 +129,12 @@ STRING.operators[BinaryOpKind.Dereference] = (a, b) => {
   }
 };
 
-// export const builtins: Readonly<Builtins> = {
-//   types: {
-//     [DatumType.Float32]: FLOAT32,
-//     [DatumType.Float64]: FLOAT64,
-//     [DatumType.Int8]: INT8,
-//     [DatumType.Int16]: INT16,
-//     [DatumType.Int32]: INT32,
-//     [DatumType.Int64]: INT64,
-
-//     [DatumType.Float]: FLOAT32,
-//     [DatumType.Integer]: INT32,
-//     [DatumType.Number]: FLOAT64,
-
-//     [DatumType.Function]: FUNCTION,
-//     [DatumType.String]: STRING,
-//     [DatumType.Type]: TYPE,
-//     [DatumType.Any]: ANY
-//   },
-//   values: { }
-// };
+export function isIteratorObject(val: Value, ctx: NativeFunctionContext): boolean {
+  if (! OBJECT.isAssignable(val.type))
+    return false;
+  if (! FUNCTION.isAssignable(val.data.done))
+    return false;
+  if (! FUNCTION.isAssignable(val.data.next))
+    return false;
+  return true;
+}

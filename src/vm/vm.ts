@@ -14,7 +14,6 @@ import * as types from "./types.js";
 import { StatementBlock } from "../statement.js";
 import { Environ } from "./environ.js";
 
-
 export interface ValueHeader {
   type: Type;
   flags?: number;
@@ -23,10 +22,9 @@ export interface ValueHeader {
 export class VmError extends DashError { }
 
 export interface Vm {
-  declare(identifier: string, header: ValueHeader, value: Value): void;
-  assign(identifier: string, value: Value): void;
-  set(identifier: string, value: Value);
-  setReturnValue(value: Value): void;
+  readonly env: Environ;
+  declare(identifier: string, header: ValueHeader): Vm;
+  assign(identifier: string, value: Value): Vm;
   defineFn(id: string, func: FunctionValue);
   defineNs(ns: string, dir: string): void;
   addExport(identifier: string, value?: Value): void;
@@ -35,9 +33,6 @@ export interface Vm {
   newDatumValue(type: DatumType, data: any): Value;
   getExports(): Record<string, Value>;
   getExportsAsValue(): Value;
-  push(value: Value): void;
-  pop(count: number): Value[];
-  pop(count?: 1): Value;
   get(identifier: string): Value | never;
   has(identifier: string): boolean;
   ref(identifier: string): ({id:string, vm: Vm}) | void;
@@ -50,9 +45,10 @@ export class DashJSVM implements Vm {
   public readonly env: Environ;
   protected readonly parent: Vm;
   protected namespaces: Record<string, string>;
-  protected definitions: Record<string, Value>;
+  protected declarations: Record<string, ValueHeader>;
   protected defHeaders: Record<string, ValueHeader>;
   protected functions: Record<string, FunctionOverloads>;
+  protected variables: Record<string, Value>;
   protected imports: Map<string, Value>;
   protected exports: Map<string, FunctionOverloads | Value>;
   protected stack: Value[];
@@ -61,42 +57,35 @@ export class DashJSVM implements Vm {
     this.env = env;
     this.namespaces = { };
     this.defHeaders = { };
-    this.definitions = { };
+    this.declarations = { };
     this.functions = { };
+    this.variables = { };
     this.imports = new Map();
     this.exports = new Map();
     this.stack = [ ];
   }
 
-  public declare(identifier: string, header: ValueHeader, value: Value): void {
+  public declare(identifier: string, header: ValueHeader) {
     if (identifier in this.defHeaders)
       throw new DashError("already declared " + identifier);
-    this.defHeaders[identifier] = header;
-    this.definitions[identifier] = value;
+    this.declarations[identifier] = header;
+    return this;
   }
 
-  public assign(identifier: string, value: Value): void {
-    // if ((!this.parent) || (identifier in this.definitions))
-    //   this.definitions[identifier] = value;
-    // else if (this.parent)
-    //   this.parent.assign(identifier, value);
-    // else
-    //   throw new DashError("undeclared "+identifier);
-    if (this.has(identifier)) {
-      const ref = this.ref(identifier)!;
-      ref.vm.set(identifier, value);
-    } else {
-      this.definitions[identifier] = value;
+  public assign(identifier: string, value: Value) {
+    if (identifier in this.declarations) {
+      const header = this.declarations[identifier];
+      if (! header.type.isAssignable(value.type))
+        throw new DashError(`cannot assign ${value.type.name} to ${header.type.name}`);
+      this.variables[identifier] = value;
+      return this;
     }
-  }
-
-  public set(identifier: string, value: Value) {
-    this.definitions[identifier] = value;
-  }
-
-  public returnValue?: Value;
-  public setReturnValue(value: Value): void {
-    this.returnValue = value;
+    else if (this.parent) {
+      return this.parent.assign(identifier, value);
+    }
+    else {
+      throw new DashError(`${identifier} not defined`);
+    }
   }
 
   public defineFn(id: string, func: FunctionValue) {
@@ -128,16 +117,7 @@ export class DashJSVM implements Vm {
     if (! this.has(identifier))
       throw new DashError("unknown identifier " + identifier);
 
-    // const existing = this.exports.get(identifier);
-    // if (this.exports.has(identifier)) {
-    //   if (! (existing instanceof FunctionOverloads))
-    //     throw new DashError(identifier + " already exported");
-
-    //   existing.set(key, value)
-    // }
-
-    // this.exports.set(identifier, value);
-    this.exports.set(identifier, this.get(identifier));
+    return this.addExport(identifier, this.get(identifier));
   }
 
   public importModule(filepath: string): Value {
@@ -186,11 +166,9 @@ export class DashJSVM implements Vm {
     return filepath;
   }
 
-  private dataTypes = { };
   public newDatumValue(type: DatumType, data: any): Value {
-    if (this.dataTypes[type])
-      return this.dataTypes[type];
-    return new Value(this.env.getBaseType(type), data);
+    const vtype = this.env.getBaseType(type);
+    return new Value(vtype, data);
   }
 
   public getExports(): Record<string, Value> {
@@ -204,27 +182,10 @@ export class DashJSVM implements Vm {
     return new Value(OBJECT, 0, this.getExports());
   }
 
-  public push(value: Value): void {
-    this.stack.push(value);
-  }
-
-  public pop(count: number): Value[];
-  public pop(count?: 1): Value;
-  public pop(count: number = 1): Value | Value[] {
-    if (count <= 0 || !Number.isInteger(count))
-      throw new VmError("pop count must be a positive, non-zero integer");
-    if (this.stack.length - count < 0)
-      throw new VmError("not enough values");
-
-    return (count === 1)
-      ? this.stack.pop()!
-      : this.stack.splice(this.stack.length - count);
-  }
-
   public get(identifier: string): Value | never {
-    if (identifier in this.definitions)
-      return this.definitions[identifier];
-    else if (identifier in this.functions)
+    if (identifier in this.variables)
+      return this.variables[identifier];
+    if (identifier in this.functions)
       return this.functions[identifier].toValue();
     if (this.parent)
       return this.parent.get(identifier);
@@ -232,14 +193,14 @@ export class DashJSVM implements Vm {
   }
 
   public has(identifier: string): boolean {
-    return (identifier in this.definitions)
+    return (identifier in this.declarations)
         || (identifier in this.functions)
-        || (this.parent?.has(identifier))
+        || this.parent?.has(identifier)
         || false;
   }
 
   public ref(identifier: string): ({id:string, vm: Vm}) | void {
-    if (identifier in this.definitions)
+    if (identifier in this.declarations)
       return {id:identifier, vm:this};
     if (this.parent)
       return this.parent.ref(identifier);
@@ -248,7 +209,9 @@ export class DashJSVM implements Vm {
 
   public save(): Vm {
     const sub = new DashJSVM(this.env);
-    Object.assign(sub.definitions, this.definitions);
+    Object.assign(sub.declarations, this.declarations);
+    Object.assign(sub.functions, this.functions);
+    Object.assign(sub.variables, this.variables);
     sub.stack.push(...this.stack);
     return sub;
   }
@@ -301,13 +264,21 @@ export function newVm(env: Environ): Vm {
     });
   });
 
-  vm.assign("Array", new Value(types.TYPE, types.ARRAY));
+  const FUNCTION = env.getBaseType(DatumType.Function);
+  const OBJECT = types.OBJECT;
+  const TYPE = env.getBaseType(DatumType.Type);
+  vm.declare("Array", {type: TYPE});
+  vm.assign("Array", new Value(TYPE, types.ARRAY));
+
+  vm.declare("array", {type: FUNCTION});
   vm.assign("array", wrapFunction((args) => {
     return newArray(vm, args);
   }));
+  vm.declare("import", {type: FUNCTION});
   vm.assign("import", wrapFunction((args) => {
     return vm.importModule(args[0].data);
   }));
+  vm.declare("input", {type: FUNCTION});
   vm.assign("input", wrapFunction((args) => {
     const question = args[0]?.data ?? "";
     const answer = rlsync.question(question);
@@ -318,12 +289,13 @@ export function newVm(env: Environ): Vm {
       return new Value(types.STRING, answer);
     }
   }));
-  vm.assign("stop", Value.ITER_STOP);
+  vm.declare("typeof", {type: FUNCTION});
   vm.assign("typeof", wrapFunction((args) => {
     if (args.length !== 1)
       throw new DashError("expected 1 arg, received " + args.length);
     return new Value(types.TYPE, args[0].type);
   }));
+  vm.declare("write", {type: FUNCTION});
   vm.assign("write", wrapFunction((args) => {
     if (args.length === 0)
       throw new DashError("must provide an argument to output");
@@ -335,8 +307,10 @@ export function newVm(env: Environ): Vm {
     return new Value(types.STRING, str);
   }));
 
+  vm.declare("jslink", {type: FUNCTION});
   vm.assign("jslink", jslink);
 
+  vm.declare("native", {type: OBJECT});
   vm.assign("native", new Value(types.OBJECT, {}, {
     mod: wrapFunction((args) => {
       if (args.length !== 2)
@@ -350,6 +324,7 @@ export function newVm(env: Environ): Vm {
       return new Value(args[0].type, a % b);
     })
   }));
+  vm.declare("new", {type: FUNCTION});
   vm.assign("new", wrapFunction((args) => {
     const t = args[0].data;
     const v = new Value(types.OBJECT, 0, {

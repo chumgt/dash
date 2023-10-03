@@ -104,15 +104,16 @@
     // fslash: "/",
     // bslash: "\\",
     at: "@",
+    dollar: "$",
+    hash: "#",
     under: "_",
 
-    dollar: "$",
     infinity: "\u221E",
 
-    comment: {
-      match: /#[^\n]*/,
-      value: (s) => s.substring(1)
-    },
+    // comment: {
+    //   match: /#[^\n]*/,
+    //   value: (s) => s.substring(1)
+    // },
     ws: {
       match: /[ \t\n\v\f]+/,
       lineBreaks: true
@@ -263,6 +264,7 @@ Reference ->
 Atom ->
   %lparen _ Expr _ %rparen {% nth(2) %}
   | Array         {% id %}
+  | Object        {% id %}
   | Identifier    {% id %}
   | NumberLiteral {% id %}
   | StringLiteral {% id %}

@@ -4,6 +4,7 @@ import { FnParameters } from "../function.js";
 import { ValueType } from "../type.js";
 import { Vm } from "./vm.js";
 import * as types from "./types.js";
+import { Block } from "../node.js";
 
 export interface NativeFunctionContext {
   vm: Vm;
@@ -13,7 +14,6 @@ export type NativeFunction =
     (args: Value[], ctx: NativeFunctionContext) => Value | never;
 
 export class Value {
-  public static readonly ITER_STOP = new Value(types.INT8, "STOP");
   public static readonly VOID = new Value(types.INT, 0);
 
   public constructor(
@@ -78,8 +78,10 @@ export class DashFunctionValue extends FunctionValue {
   public apply(vm: Vm, args: Value[]): Value {
     const argMap = this.mapArgsToParams(vm, args);
 
-    for (const [key, value] of Object.entries(argMap))
+    for (const [key, value] of Object.entries(argMap)) {
+      vm.declare(key, {type: types.ANY});
       vm.assign(key, value);
+    }
 
     return this.block.evaluate(vm);
   }
@@ -130,13 +132,18 @@ export function newArray(vm: Vm, values: Value[]): Value {
     ),
     iter: wrapFunction((args) => {
       let i = 0;
-      return wrapFunction(() => {
-        if (i >= self.data.length)
-          return Value.ITER_STOP;
-        const temp = self.data[i];
-        i += 1;
-        return temp;
+
+      const done = wrapFunction(() => wrap(i < self.data.length ? 0:1));
+      const next = wrapFunction(() => {
+        if (i < self.data.length) {
+          const t = self.data[i];
+          i += 1;
+          return t;
+        }
+        throw new DashError("already done");
       });
+
+      return new Value(types.OBJECT, {done, next});
     })
   });
   return self;
@@ -145,13 +152,25 @@ export function newArray(vm: Vm, values: Value[]): Value {
 export function newRangeIter(start: number, stop: number, step: number): Value {
   let i = start;
 
-  return wrapFunction(() => {
-    if (Math.sign(step) !== Math.sign(stop - i))
-      return Value.ITER_STOP;
-    const value = i;
-    i += step;
-    return new Value(types.INT32, value);
+  const self = new Value(types.OBJECT, {
+    done: wrapFunction((_args, ctx) => wrap(Math.sign(step) !== Math.sign(stop - i))),
+    next: wrapFunction((_args, ctx) => {
+      const doneFn = self.data.done as FunctionValue;
+      if (doneFn.call(ctx.vm, []).data === 1)
+        throw new DashError("iterator is already finished");
+      const temp = new Value(types.INT32, i);
+      i += step;
+      return new Value(types.INT32, temp);
+    })
   });
+  return self;
+}
+
+export function runExprIterator(iterator: Value, vm: Vm, block: Expression) {
+  if (! types.isIteratorObject(iterator, {vm}))
+    throw new DashError("not an iterator");
+
+
 }
 
 export function wrapFunction(fn: NativeFunction): Value {
@@ -192,16 +211,26 @@ export function wrap(jsValue: any, type?: ValueType): Value | never {
   }
 }
 
-export function getValueIteratorFn(iterable: Value, vm: Vm): FunctionValue | never {
-  if (types.FUNCTION.isAssignable(iterable.type)) {
-    return iterable as FunctionValue;
-  } else if (iterable.properties?.iter) {
-    const iterFn = iterable.properties.iter;
-    if (! types.FUNCTION.isAssignable(iterFn.type))
-      throw new DashError(`${iterable.type.name} not iterable`);
-    return getValueIteratorFn(iterFn.call(vm, []), vm);
-  } else {
-    throw new DashError(`${iterable.type.name} not iterable`);
+export function getIterator(iterable: Value, vm: Vm): Value | never {
+  if (types.ARRAY.isAssignable(iterable.type)) {
+    const factory = iterable.properties!.iter as FunctionValue;
+    return factory.call(vm, []);
   }
+  if (types.FUNCTION.isAssignable(iterable.type)) {
+    return new Value(types.OBJECT, {
+      done: wrapFunction(() => new Value(types.INT8, 0)),
+      next: iterable
+    });
+  }
+  if (types.OBJECT.isAssignable(iterable.type)) {
+    if (iterable.properties?.iter) {
+      const iterFn = iterable.properties.iter as FunctionValue;
+      if (! types.FUNCTION.isAssignable(iterFn.type))
+        throw new DashError(`${iterable.type.name} not iterable`);
+      return getIterator(iterFn.call(vm, []), vm);
+    }
+  }
+
+  throw new DashError(`${iterable.type.name} not iterable`);
 }
 //#endregion
