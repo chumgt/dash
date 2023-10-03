@@ -163,11 +163,10 @@ StmtBlockBody ->
   | null {% (d) => [] %}
 
 Expr ->
-  OpExpr     {% id %}
-  | CastExpr {% id %}
-  | Function {% id %}
-  | IfExpr     {% id %}
-  | SwitchExpr {% id %}
+  # OpExpr     {% id %}
+  # | CastExpr {% id %}
+  IfExpr     {% id %}
+  # | SwitchExpr {% id %}
 
 Stmt ->
   AssignmentStmt {% id %}
@@ -193,20 +192,24 @@ CallExpr ->
 CastExpr ->
   Primary _ %kw_as _ Primary
     {% (d) => new expr.CastExpression(d[0], d[4]) %}
-
-IfExpr ->
-  Primary __ %kw_if __ OpExpr __ %kw_else __ ExprBlock
-    {% (d) => new expr.IfExpression(d[4], d[0], d[8]) %}
-  # | ForExpr
-  #   {% id %}
+  | OpExpr
+    {% id %}
 
 ForExpr ->
-  ExprBlock __ %kw_for __ Identifier __ %kw_in __ Expr
+  IfExpr __ %kw_for __ Identifier __ %kw_in __ OpExpr
     {% (d) => new expr.ForMapExpression(d[4], d[8], d[0]) %}
 
 SwitchExpr ->
   %kw_switch (_ Atom):? _ %lbrace _ SwitchBody _ %rbrace
     {% (d) => new expr.SwitchExpression(d[1]?.[1], d[5].cases, d[5].defaultCase) %}
+  | CastExpr
+    {% id %}
+
+IfExpr ->
+  SwitchExpr __ %kw_if __ OpExpr __ %kw_else __ IfExpr
+    {% (d) => new expr.IfExpression(d[4], d[0], d[8]) %}
+  | SwitchExpr
+    {% id %}
 
 IfStmt ->
   %kw_if __ OpExpr _ StmtBlock (_ ElseClause):?
@@ -216,7 +219,7 @@ ElseClause ->
     {% nth(2) %}
 
 ForStmt ->
-  %kw_for __ Identifier __ %kw_in __ Expr __ StmtBlock
+  %kw_for __ Identifier __ %kw_in __ OpExpr __ StmtBlock
     {% (d) => new stmt.ForInStatement(d[2], d[6], d[8]) %}
 
 ReturnStmt ->
@@ -240,7 +243,7 @@ SwitchCaseList ->
   | SwitchCase
     {% (d) => [d[0]] %}
 SwitchCase ->
-  Expr _ %eq %gt _ ExprBlock
+  OpExpr _ %eq %gt _ ExprBlock
     {% (d) => [d[0], d[5]] %}
 SwitchElseCase ->
   %kw_else _ %eq %gt _ ExprBlock
@@ -264,6 +267,7 @@ Reference ->
 Atom ->
   %lparen _ Expr _ %rparen {% nth(2) %}
   | Array         {% id %}
+  | Function      {% id %}
   | Object        {% id %}
   | Identifier    {% id %}
   | NumberLiteral {% id %}
