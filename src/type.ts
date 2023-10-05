@@ -1,13 +1,14 @@
 import { DatumType } from "./data.js";
 import { DashError } from "./error.js";
 import { BinaryOpKind, UnaryOpKind } from "./expression.js";
-import { Value } from "./vm/value.js";
+import { Vm } from "./index.js";
+import { type NativeFunctionContext, Value } from "./vm/value.js";
 
 export type BinaryOperatorFunction =
-    (a: Value, b: Value) => Value;
+    (a: Value, b: Value, vm: Vm) => Value;
 
 export type UnaryOperatorFunction =
-    (a: Value) => Value;
+    (a: Value, vm: Vm) => Value;
 
 export type BinaryOperatorMap = {
   [K in keyof typeof BinaryOpKind]: BinaryOperatorFunction;
@@ -123,6 +124,8 @@ export class Type {
 }
 
 export class ValueType extends Type {
+  public static readonly ITERABLE = Symbol();
+
   public static biggest<T0 extends ValueType, T1 extends ValueType>(a: T0, b: T1): T0 | T1 {
     if (a.header?.byteLength && b.header?.byteLength) {
       return (a.header.byteLength >= b.header.byteLength) ? a : b;
@@ -158,10 +161,15 @@ export class ValueType extends Type {
   public getOperator(op: BinaryOpKind | UnaryOpKind): BinaryOperatorFunction | UnaryOperatorFunction | undefined {
     return this.operators[op] ?? this.superType?.getOperator(op as any);
   }
+
+  public isIterable(value: Value): boolean { return false }
+  public getIterator(ctx: NativeFunctionContext, value: Value): Value  {
+    throw new DashError(this.isIterable(value)
+        ? "iterator not defined"
+        : this.name + " not iterable");
+  }
 }
 
 /*
 Lua a ~= b to not (a == b), a > b to b < a, and a >= b to b <= a.
  */
-
-// export class TypeManager { }

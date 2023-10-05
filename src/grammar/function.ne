@@ -1,50 +1,58 @@
 @lexer lexer
 
-Function ->
-  %kw_fn _ %lparen _ ParamList _ %rparen (_ %colon _ Primary):? _ FunctionBody
+FunctionLiteral ->
+  "fn" _ Parameters (_ TypeSignature):? _ FunctionBlock
     {% (d) => new expr.FunctionExpression({
       kind: expr.ExpressionKind.Function,
-      block: d[9],
-      params: d[4],
-      returnType: d[7]?.[3]
+      block: d[5],
+      params: d[2],
+      returnType: d[3]?.[1]
     }) %}
 
 FunctionDecl ->
-  %kw_fn __ Identifier _ %lparen _ ParamList _ %rparen (_ %colon _ Primary):? _ FunctionBody
-    {% (d) => new stmt.FunctionDeclaration(d[2], d[6], d[11], {
+  (AnnotationList _):? "fn" __ Name _ Parameters (_ TypeSignature):? _ FunctionBlock
+    {% (d) => new stmt.FunctionDeclaration(d[3], d[5], d[8], {
       "annotations": [],
-      "returnType": d[9]?.[3]
+      "returnType": d[10]?.[1]
     }) %}
 
-FunctionBody ->
-  %eq _ Expr
-    {% nth(2) %}
+FunctionBlock ->
+  "=>" _ ReturnExpr
+    {% (d) => new expr.BlockExpression(
+        new stmt.StatementBlock([]), d[2]) %}
   | ExprBlock
     {% id %}
 
-ArgList ->
-  ArgList _ %comma _ Arg {% (d) => [...d[0], d[4]] %}
-  | Arg  {% (d) => [d[0]] %}
-  | null {% () => [] %}
+Arguments ->
+  "(" _ ArgumentList _ ")"
+    {% nth(2) %}
 
-Arg ->
-  Expr
+ArgumentList ->
+  ArgumentList _ "," _ Argument {% (d) => [...d[0], d[4]] %}
+  | Argument  {% (d) => [d[0]] %}
+  | null {% () => [] %}
+Argument ->
+  ReturnExpr
     {% id %}
 
-ParamList ->
-  ParamList _ %comma _ Param {% (d) => [...d[0], d[4]] %}
-  | Param  {% (d) => [d[0]] %}
+Parameters ->
+  "(" _ ParameterList _ ")"
+    {% nth(2) %}
+
+ParameterList ->
+  ParameterList _ "," _ Parameter {% (d) => [...d[0], d[4]] %}
+  | Parameter  {% (d) => [d[0]] %}
   | null {% () => [] %}
 
-Param ->
-  ParamSig (_ %eq _ Expr):?
+Parameter ->
+  ParameterSignature (_ "=" _ Expr):?
     {% (d) => Object.assign({
       "defaultValue": d[1]?.[3]
     }, d[0]) %}
 
-ParamSig ->
-  Identifier (_ %colon _ Identifier):?
+ParameterSignature ->
+  Name (_ TypeSignature):?
     {% (d) => ({
       "name": d[0].value,
-      "typedef": d[1]?.[3]
+      "typedef": d[1]?.[1]
     }) %}

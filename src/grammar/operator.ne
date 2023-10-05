@@ -5,71 +5,71 @@ OpExpr ->
     {% id %}
 
 ExponentialExpr ->
-  Primary _ %power _ ExponentialExpr
+  Primary _ "**" _ ExponentialExpr
     {% (d) => new expr.BinaryOpExpression(expr.BinaryOpKind.Exponential, d[0], d[4]) %}
   | Primary
     {% id %}
 
 UnaryExpr ->
-  %plus _ UnaryExpr
+  "+" _ UnaryExpr
     {% nth(2) %}
-  | %minus _ UnaryExpr
+  | "-" _ UnaryExpr
     {% (d) => new expr.UnaryOpExpression(expr.UnaryOpKind.Negate, d[2]) %}
-  | %not _ UnaryExpr
+  | "!" _ UnaryExpr
     {% (d) => new expr.UnaryOpExpression(expr.UnaryOpKind.Not, d[2]) %}
   | ExponentialExpr
     {% id %}
 
 MultiplicativeExpr ->
-  MultiplicativeExpr _ %divide _ UnaryExpr
+  MultiplicativeExpr _ "/" _ UnaryExpr
     {% (d) => new expr.BinaryOpExpression(expr.BinaryOpKind.Divide, d[0], d[4]) %}
-  | MultiplicativeExpr _ %times _ UnaryExpr
+  | MultiplicativeExpr _ "*" _ UnaryExpr
     {% (d) => new expr.BinaryOpExpression(expr.BinaryOpKind.Multiply, d[0], d[4]) %}
   | UnaryExpr
     {% id %}
 
 AdditiveExpr ->
-  AdditiveExpr _ %plus _ MultiplicativeExpr
+  AdditiveExpr _ "+" _ MultiplicativeExpr
     {% (d) => new expr.BinaryOpExpression(expr.BinaryOpKind.Add, d[0], d[4]) %}
-  | AdditiveExpr _ %minus _ MultiplicativeExpr
+  | AdditiveExpr _ "-" _ MultiplicativeExpr
     {% (d) => new expr.BinaryOpExpression(expr.BinaryOpKind.Subtract, d[0], d[4]) %}
   | MultiplicativeExpr
     {% id %}
 
 ConcatOp ->
-  ConcatOp _ %dot %dot _ AdditiveExpr
-    {% (d) => new expr.BinaryOpExpression(expr.BinaryOpKind.Concat, d[0], d[5]) %}
+  ConcatOp _ ".." _ AdditiveExpr
+    {% (d) => new expr.BinaryOpExpression(expr.BinaryOpKind.Concat, d[0], d[4]) %}
   | AdditiveExpr
     {% id %}
 
 RelationalOp ->
-  RelationalOp _ %gt _ ConcatOp
+  RelationalOp _ ">" _ ConcatOp
     {% (d) => new expr.BinaryOpExpression(expr.BinaryOpKind.GT, d[0], d[4]) %}
-  | RelationalOp _ %gt %eq _ ConcatOp
-    {% (d) => new expr.BinaryOpExpression(expr.BinaryOpKind.GEQ, d[0], d[5]) %}
-  | RelationalOp _ %lt _ ConcatOp
+  | RelationalOp _ ">=" _ ConcatOp
+    {% (d) => new expr.BinaryOpExpression(expr.BinaryOpKind.GEQ, d[0], d[4]) %}
+  | RelationalOp _ "<" _ ConcatOp
     {% (d) => new expr.BinaryOpExpression(expr.BinaryOpKind.LT, d[0], d[4]) %}
-  | RelationalOp _ %lt %eq _ ConcatOp
-    {% (d) => new expr.BinaryOpExpression(expr.BinaryOpKind.LEQ, d[0], d[5]) %}
+  | RelationalOp _ "<=" _ ConcatOp
+    {% (d) => new expr.BinaryOpExpression(expr.BinaryOpKind.LEQ, d[0], d[4]) %}
   | ConcatOp
     {% id %}
 
 EqualityOp ->
-  EqualityOp _ %eq %eq _ RelationalOp
-    {% (d) => new expr.BinaryOpExpression(expr.BinaryOpKind.EQ, d[0], d[5]) %}
-  | EqualityOp _ %not %eq _ RelationalOp
-    {% (d) => new expr.BinaryOpExpression(expr.BinaryOpKind.NEQ, d[0], d[5]) %}
+  EqualityOp _ "==" _ RelationalOp
+    {% (d) => new expr.BinaryOpExpression(expr.BinaryOpKind.EQ, d[0], d[4]) %}
+  | EqualityOp _ "!=" _ RelationalOp
+    {% (d) => new expr.BinaryOpExpression(expr.BinaryOpKind.NEQ, d[0], d[4]) %}
   | RelationalOp
     {% id %}
 
 LogicalAndExpr ->
-  LogicalAndExpr _ %and %and _ EqualityOp
-    {% (d) => new expr.BinaryOpExpression(expr.BinaryOpKind.And, d[0], d[5]) %}
+  LogicalAndExpr _ "&&" _ EqualityOp
+    {% (d) => new expr.BinaryOpExpression(expr.BinaryOpKind.And, d[0], d[4]) %}
   | EqualityOp
     {% id %}
 
 LogicalOrExpr ->
-  LogicalOrExpr _ %or %or _ LogicalAndExpr
-    {% (d) => new expr.BinaryOpExpression(expr.BinaryOpKind.Or, d[0], d[5]) %}
+  LogicalOrExpr _ "||" _ LogicalAndExpr
+    {% (d) => new expr.BinaryOpExpression(expr.BinaryOpKind.Or, d[0], d[4]) %}
   | LogicalAndExpr
     {% id %}

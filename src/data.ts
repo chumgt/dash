@@ -7,9 +7,12 @@ export enum DatumType {
   Float32 = 1 << 4,
   Float64 = 1 << 5,
 
+  Boolean = 1 << 6,
   Function = 1 << 7,
   String = 1 << 8,
   Type = 1 << 9,
+  Array = 1 << 10,
+  Object = 1 << 11,
 
   Float = Float32 | Float64,
   Integer = Int8 | Int16 | Int32 | Int64,
@@ -55,5 +58,7 @@ export const nameToTypeMap = {
   "str": DatumType.String,
   "num": DatumType.Number,
   "type": DatumType.Type,
+  "object": DatumType.Object,
+  "array": DatumType.Array,
   "any": DatumType.Any
 } as const;

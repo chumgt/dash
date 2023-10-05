@@ -5,7 +5,7 @@ import { newVm } from "./vm/vm.js";
 import { Expression } from "./expression.js";
 import { NodeKind } from "./node.js";
 import { StatementBlock } from "./statement.js";
-import { Environ } from "./vm/environ.js";
+import { Platform } from "./vm/platform.js";
 import { DatumType, nameToTypeMap } from "./data.js";
 import * as parsing from "./parse.js";
 import * as types from "./vm/types.js";
@@ -49,7 +49,7 @@ function main() {
     return;
   }
 
-  const env = new Environ();
+  const env = new Platform();
   env.defineBaseType(DatumType.Float, types.FLOAT)
   env.defineBaseType(DatumType.Float32, types.FLOAT32)
   env.defineBaseType(DatumType.Float64, types.FLOAT64)
@@ -62,6 +62,8 @@ function main() {
   env.defineBaseType(DatumType.Number, types.NUMBER)
   env.defineBaseType(DatumType.String, types.STRING)
   env.defineBaseType(DatumType.Type, types.TYPE);
+  env.defineBaseType(DatumType.Array, types.ARRAY);
+  env.defineBaseType(DatumType.Object, types.OBJECT);
   env.defineBaseType(DatumType.Any, types.ANY)
 
   const vm = newVm(env);

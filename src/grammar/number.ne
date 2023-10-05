@@ -1,9 +1,9 @@
 @{%
   function postInt(type: data.DatumType, base: number) {
     return function (token: any) {
-      return ({ base, type,
+      return ({ ...token, base,
+        "type": type,
         "value": token[0].value,
-        "source": token[0]
       });
     };
   }
@@ -13,14 +13,14 @@
 
 NumberLiteral ->
   (FloatLiteral | IntegerLiteral)
-    {% (d) => new expr.ValueExpression(d[0][0]) %}
+    {% (d) => new expr.LiteralExpression(d[0][0]) %}
 
 FloatLiteral ->
   %float
     {% (d) => ({
+      ...d[0],
       "type": data.DatumType.Float64,
-      "value": d[0].value,
-      "source": d[0]
+      "value": d[0].value
     }) %}
 
 IntegerLiteral ->

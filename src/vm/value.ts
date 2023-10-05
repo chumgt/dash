@@ -3,8 +3,8 @@ import { Expression } from "../expression.js";
 import { FnParameters } from "../function.js";
 import { ValueType } from "../type.js";
 import { Vm } from "./vm.js";
+import { DatumType } from "../data.js";
 import * as types from "./types.js";
-import { Block } from "../node.js";
 
 export interface NativeFunctionContext {
   vm: Vm;
@@ -14,8 +14,6 @@ export type NativeFunction =
     (args: Value[], ctx: NativeFunctionContext) => Value | never;
 
 export class Value {
-  public static readonly VOID = new Value(types.INT, 0);
-
   public constructor(
       public readonly type: ValueType,
       public readonly data: any,
@@ -76,10 +74,11 @@ export class DashFunctionValue extends FunctionValue {
   }
 
   public apply(vm: Vm, args: Value[]): Value {
+    const t_any = vm.platform.getBaseType(DatumType.Any);
     const argMap = this.mapArgsToParams(vm, args);
 
     for (const [key, value] of Object.entries(argMap)) {
-      vm.declare(key, {type: types.ANY});
+      vm.declare(key, {type: t_any});
       vm.assign(key, value);
     }
 
@@ -107,15 +106,28 @@ export class NativeFunctionValue extends FunctionValue {
   }
 }
 
+// export class DashIteratorValue extends Value {
+//   public constructor() {
+//     super(types.OBJECT, )
+//   }
+// }
+
 //#region funcs
 export function newArray(vm: Vm, values: Value[]): Value {
-  const self: Value = new Value(types.ARRAY, values ?? [], {
-    length: new Value(types.INT32, values.length),
+  const {
+    [DatumType.Array]: t_Array,
+    [DatumType.Boolean]: t_Boolean,
+    [DatumType.Int32]: t_Int32,
+    [DatumType.String]: t_String
+  } = vm.platform.getBaseTypes();
+
+  const self: Value = new Value(t_Array, values ?? [], {
+    length: new Value(t_Int32, values.length),
     add: wrapFunction((args) =>
       newArray(vm, [...self.data, ...args])
     ),
     at: wrapFunction((args) => {
-      if (! types.INT.isAssignable(args[0].type))
+      if (! t_Int32.isAssignable(args[0].type))
         throw new DashError("array index must be an int");
 
       const index = args[0].data;
@@ -125,35 +137,40 @@ export function newArray(vm: Vm, values: Value[]): Value {
     }),
     has: wrapFunction((args) => {
       const index = self.data.findIndex(x => x.data === args[0].data);
-      return new Value(types.INT8, index >= 0 ? 1 : 0);
+      return new Value(t_Boolean, index >= 0 ? 1 : 0);
     }),
     toString: wrapFunction((args) =>
-      new Value(types.STRING, self.data.join(", "))
+      new Value(t_String, self.data.join(", "))
     ),
     iter: wrapFunction((args) => {
-      let i = 0;
-
-      const done = wrapFunction(() => wrap(i < self.data.length ? 0:1));
-      const next = wrapFunction(() => {
-        if (i < self.data.length) {
-          const t = self.data[i];
-          i += 1;
-          return t;
-        }
-        throw new DashError("already done");
-      });
-
-      return new Value(types.OBJECT, {done, next});
+      return newArrayIterator(self);
     })
   });
   return self;
+}
+
+export function newArrayIterator(value) {
+  let i = 0;
+
+  const done = wrapFunction(() => wrap(i < value.data.length ? 0:1));
+  const next = wrapFunction(() => {
+    if (i < value.data.length) {
+      const t = value.data[i];
+      i += 1;
+      return t;
+    }
+    throw new DashError("already done");
+  });
+
+  return new Value(types.OBJECT, {done, next});
 }
 
 export function newRangeIter(start: number, stop: number, step: number): Value {
   let i = start;
 
   const self = new Value(types.OBJECT, {
-    done: wrapFunction((_args, ctx) => wrap(Math.sign(step) !== Math.sign(stop - i))),
+    done: wrapFunction((_args, ctx) =>
+        wrap(Math.sign(step) !== Math.sign(stop - i))),
     next: wrapFunction((_args, ctx) => {
       const doneFn = self.data.done as FunctionValue;
       if (doneFn.call(ctx.vm, []).data === 1)
@@ -164,13 +181,6 @@ export function newRangeIter(start: number, stop: number, step: number): Value {
     })
   });
   return self;
-}
-
-export function runExprIterator(iterator: Value, vm: Vm, block: Expression) {
-  if (! types.isIteratorObject(iterator, {vm}))
-    throw new DashError("not an iterator");
-
-
 }
 
 export function wrapFunction(fn: NativeFunction): Value {
@@ -186,8 +196,6 @@ export function wrapObject(obj: object): Value | never {
 }
 
 export function wrap(jsValue: any, type?: ValueType): Value | never {
-  // if (jsValue && (jsValue instanceof Value))
-  //   return jsValue;
   if (type) {
     return type.wrap(jsValue);
   }
@@ -198,7 +206,9 @@ export function wrap(jsValue: any, type?: ValueType): Value | never {
     case "function":
       return wrapFunction(((args) => {
         const result = jsValue(...args.map(x => x.data));
-        return result ? wrap(result) : Value.VOID;
+        if (result)
+          return wrap(result);
+        throw new DashError("function returned nothing");
       }));
     case "number":
       return new Value(types.FLOAT64, jsValue);
@@ -211,26 +221,33 @@ export function wrap(jsValue: any, type?: ValueType): Value | never {
   }
 }
 
+/*
 export function getIterator(iterable: Value, vm: Vm): Value | never {
-  if (types.ARRAY.isAssignable(iterable.type)) {
+  const [ARRAY, FUNCTION, OBJECT] = [
+    vm.env.getBaseType(DatumType.Array),
+    vm.env.getBaseType(DatumType.Function),
+    vm.env.getBaseType(DatumType.Object)
+  ];
+
+  if (ARRAY.isAssignable(iterable.type)) {
     const factory = iterable.properties!.iter as FunctionValue;
     return factory.call(vm, []);
   }
-  if (types.FUNCTION.isAssignable(iterable.type)) {
-    return new Value(types.OBJECT, {
+  if (FUNCTION.isAssignable(iterable.type)) {
+    return new Value(OBJECT, {
       done: wrapFunction(() => new Value(types.INT8, 0)),
       next: iterable
     });
   }
-  if (types.OBJECT.isAssignable(iterable.type)) {
+  if (OBJECT.isAssignable(iterable.type)) {
     if (iterable.properties?.iter) {
       const iterFn = iterable.properties.iter as FunctionValue;
-      if (! types.FUNCTION.isAssignable(iterFn.type))
+      if (! FUNCTION.isAssignable(iterFn.type))
         throw new DashError(`${iterable.type.name} not iterable`);
       return getIterator(iterFn.call(vm, []), vm);
     }
   }
 
   throw new DashError(`${iterable.type.name} not iterable`);
-}
+}*/
 //#endregion

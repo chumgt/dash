@@ -4,13 +4,18 @@ import { ValueType } from "../type.js";
 import { TYPE } from "./types.js";
 import { Value } from "./value.js";
 
-export class Environ {
+export class Platform {
   protected types: Record<DatumType, ValueType>;
   private typeValues: Record<DatumType, Value>;
 
   public constructor() {
     this.types = {} as any;
     this.typeValues = {} as any;
+  }
+
+
+  public newDatumValue(type: DatumType, data: any): Value {
+    return new Value(this.getBaseType(type), data);
   }
 
   public defineBaseType(datumType: DatumType, type: ValueType) {
@@ -26,6 +31,10 @@ export class Environ {
       return this.types[datumType];
 
     throw new DashError(`base type ${datumType} not defined`);
+  }
+
+  public getBaseTypes(...datumTypes: DatumType[]): Record<DatumType, ValueType> {
+    return this.types;
   }
 
   public getBaseTypeAsValue(datumType: DatumType): Value {

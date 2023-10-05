@@ -30,11 +30,11 @@ export function parse(chunk: string): ChunkNode {
 
 export function parseAll(chunk: string): ChunkNode[] {
   const parser = newParser();
-  try {
+  // try {
     parser.feed(chunk);
-  } catch (ex: any) {
-    throw new DashParseError(ex.message, {cause: ex}, ex.token);
-  }
+  // } catch (ex: any) {
+  //   throw new DashParseError(ex.message, {cause: ex}, ex.token);
+  // }
 
   const asts = parser.finish();
   return asts;

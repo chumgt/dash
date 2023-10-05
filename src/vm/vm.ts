@@ -6,13 +6,11 @@ import { DashError } from "../error.js";
 import { Expression } from "../expression.js";
 import { NodeKind } from "../node.js";
 import { Type, ValueType } from "../type.js";
-import { OBJECT } from "./types.js";
 import { FunctionValue, Value, newArray, wrap, wrapFunction } from "./value.js";
 import { FunctionOverloads } from "./function.js";
 import * as parsing from "../parse.js";
-import * as types from "./types.js";
 import { StatementBlock } from "../statement.js";
-import { Environ } from "./environ.js";
+import { Platform } from "./platform.js";
 
 export interface ValueHeader {
   type: Type;
@@ -22,7 +20,7 @@ export interface ValueHeader {
 export class VmError extends DashError { }
 
 export interface Vm {
-  readonly env: Environ;
+  readonly platform: Platform;
   declare(identifier: string, header: ValueHeader): Vm;
   assign(identifier: string, value: Value): Vm;
   defineFn(id: string, func: FunctionValue);
@@ -30,19 +28,17 @@ export interface Vm {
   addExport(identifier: string, value?: Value): void;
   importModule(filepath: string): Value;
   resolveImportPath(filepath: string): string;
-  newDatumValue(type: DatumType, data: any): Value;
   getExports(): Record<string, Value>;
   getExportsAsValue(): Value;
   get(identifier: string): Value | never;
   has(identifier: string): boolean;
-  ref(identifier: string): ({id:string, vm: Vm}) | void;
   save(): Vm;
   sub(): Vm;
   throwValue(val?: Value): never;
 }
 
 export class DashJSVM implements Vm {
-  public readonly env: Environ;
+  public readonly platform: Platform;
   protected readonly parent: Vm;
   protected namespaces: Record<string, string>;
   protected declarations: Record<string, ValueHeader>;
@@ -53,8 +49,8 @@ export class DashJSVM implements Vm {
   protected exports: Map<string, FunctionOverloads | Value>;
   protected stack: Value[];
 
-  public constructor(env: Environ) {
-    this.env = env;
+  public constructor(env: Platform) {
+    this.platform = env;
     this.namespaces = { };
     this.defHeaders = { };
     this.declarations = { };
@@ -134,6 +130,7 @@ export class DashJSVM implements Vm {
 
     const content = fs.readFileSync(filepath, "utf-8");
     const chunk = parsing.parse(content);
+    fs.writeFileSync(filepath + ".ast.json", JSON.stringify(chunk, null, 2));
 
     if (chunk.kind === NodeKind.Block) {
       const module = chunk as StatementBlock;
@@ -167,7 +164,7 @@ export class DashJSVM implements Vm {
   }
 
   public newDatumValue(type: DatumType, data: any): Value {
-    const vtype = this.env.getBaseType(type);
+    const vtype = this.platform.getBaseType(type);
     return new Value(vtype, data);
   }
 
@@ -179,6 +176,7 @@ export class DashJSVM implements Vm {
   }
 
   public getExportsAsValue(): Value {
+    const OBJECT = this.platform.getBaseType(DatumType.Object);
     return new Value(OBJECT, 0, this.getExports());
   }
 
@@ -199,16 +197,8 @@ export class DashJSVM implements Vm {
         || false;
   }
 
-  public ref(identifier: string): ({id:string, vm: Vm}) | void {
-    if (identifier in this.declarations)
-      return {id:identifier, vm:this};
-    if (this.parent)
-      return this.parent.ref(identifier);
-    throw new DashError(`Undefined '${identifier}'`);
-  }
-
   public save(): Vm {
-    const sub = new DashJSVM(this.env);
+    const sub = new DashJSVM(this.platform);
     Object.assign(sub.declarations, this.declarations);
     Object.assign(sub.functions, this.functions);
     Object.assign(sub.variables, this.variables);
@@ -217,7 +207,7 @@ export class DashJSVM implements Vm {
   }
 
   public sub(): Vm {
-    const sub = new DashJSVM(this.env);
+    const sub = new DashJSVM(this.platform);
     (sub as any).parent = this;
     return sub;
   }
@@ -234,24 +224,34 @@ export function resolveImportPath(path: string): string {
   return paths.normalize(path);
 }
 
-export function newVm(env: Environ): Vm {
+export function newVm(env: Platform): Vm {
   const vm = new DashJSVM(env);
+
+  const [ANY, ARRAY, FUNCTION, NUMBER, OBJECT, STRING, TYPE] = [
+    vm.platform.getBaseType(DatumType.Any),
+    vm.platform.getBaseType(DatumType.Array),
+    vm.platform.getBaseType(DatumType.Function),
+    vm.platform.getBaseType(DatumType.Number),
+    vm.platform.getBaseType(DatumType.Object),
+    vm.platform.getBaseType(DatumType.String),
+    vm.platform.getBaseType(DatumType.Type)
+  ];
 
   const USE_JSFN = true;
   const jslink = wrapFunction((args) => {
     if (args.length < 1)
       throw new DashError("expected at least 1 arg")
-    if (! types.ARRAY.isAssignable(args[0].type))
+    if (! ARRAY.isAssignable(args[0].type))
       throw new DashError(`arg 1 expected array, got ${args[0].type.name}`);
-    if (! args[0].data.every(x => types.STRING.isAssignable(x.type)))
+    if (! args[0].data.every(x => STRING.isAssignable(x.type)))
       throw new DashError(`arg 1 expected array[str]`);
 
-    if (args[1] && ! types.TYPE.isAssignable(args[1].type))
+    if (args[1] && ! TYPE.isAssignable(args[1].type))
       throw new DashError(`arg 2 expected type, got ${args[1].type.name}`);
 
     const d_keys = args[0].data as Value[];
     const js_value = globalThis[d_keys[0].data][d_keys[1].data];
-    const type: ValueType = args[1]?.data ?? types.ANY;
+    const type: ValueType = args[1]?.data ?? ANY;
 
     return wrapFunction((args) => {
       if (! USE_JSFN)
@@ -264,11 +264,8 @@ export function newVm(env: Environ): Vm {
     });
   });
 
-  const FUNCTION = env.getBaseType(DatumType.Function);
-  const OBJECT = types.OBJECT;
-  const TYPE = env.getBaseType(DatumType.Type);
   vm.declare("Array", {type: TYPE});
-  vm.assign("Array", new Value(TYPE, types.ARRAY));
+  vm.assign("Array", new Value(TYPE, ARRAY));
 
   vm.declare("array", {type: FUNCTION});
   vm.assign("array", wrapFunction((args) => {
@@ -286,14 +283,14 @@ export function newVm(env: Environ): Vm {
       const type = args[1].data as ValueType;
       return type.from(DatumType.String, answer);
     } else {
-      return new Value(types.STRING, answer);
+      return new Value(STRING, answer);
     }
   }));
   vm.declare("typeof", {type: FUNCTION});
   vm.assign("typeof", wrapFunction((args) => {
     if (args.length !== 1)
       throw new DashError("expected 1 arg, received " + args.length);
-    return new Value(types.TYPE, args[0].type);
+    return new Value(TYPE, args[0].type);
   }));
   vm.declare("write", {type: FUNCTION});
   vm.assign("write", wrapFunction((args) => {
@@ -304,20 +301,20 @@ export function newVm(env: Environ): Vm {
     for (let arg of args)
       str += arg.data;
     process.stdout.write(str);
-    return new Value(types.STRING, str);
+    return new Value(STRING, str);
   }));
 
   vm.declare("jslink", {type: FUNCTION});
   vm.assign("jslink", jslink);
 
   vm.declare("native", {type: OBJECT});
-  vm.assign("native", new Value(types.OBJECT, {}, {
+  vm.assign("native", new Value(OBJECT, {}, {
     mod: wrapFunction((args) => {
       if (args.length !== 2)
         throw new DashError(`expected 2 args, received ${args.length}`);
-      if (! args[0].type.extends(types.NUMBER))
+      if (! args[0].type.extends(NUMBER))
         throw new DashError(`cannot get modulo of a ${args[0].type.name}`);
-      if (! args[1].type.extends(types.NUMBER))
+      if (! args[1].type.extends(NUMBER))
         throw new DashError(`arg 2 expected number, got ${args[0].type.name}`);
       const a = args[0].data;
       const b = args[1].data;
@@ -327,8 +324,8 @@ export function newVm(env: Environ): Vm {
   vm.declare("new", {type: FUNCTION});
   vm.assign("new", wrapFunction((args) => {
     const t = args[0].data;
-    const v = new Value(types.OBJECT, 0, {
-      ["foo"]: new Value(types.STRING, "bar!"),
+    const v = new Value(OBJECT, 0, {
+      ["foo"]: new Value(STRING, "bar!"),
       ["t"]: t
     });
     return v;

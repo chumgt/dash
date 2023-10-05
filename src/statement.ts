@@ -1,5 +1,5 @@
 import { DashError } from "./error.js";
-import { Expression, IdentifierExpression, ValueExpression } from "./expression.js";
+import { Expression, IdentifierExpression } from "./expression.js";
 import { FnParameters } from "./function.js";
 import { AssignmentTarget, Block, Node, NodeKind } from "./node.js";
 import { ParameterToken } from "./token.js";
@@ -27,7 +27,13 @@ export enum FlowType {
 }
 
 export interface DeclarationInfo {
-  annotations: Expression[];
+  annotations?: Expression[];
+  type?: Expression;
+  constant?: boolean;
+}
+
+export interface FnDeclarationInfo {
+  annotations?: Expression[];
   returnType: Expression;
 }
 
@@ -36,16 +42,23 @@ export interface Flow {
   value?: Value;
 }
 
-export abstract class Statement extends Node {
-  public constructor(public type: StatementKind) {
-    super(NodeKind.Statement);
-  }
+export interface Statement extends Node {
   /**
    * Applies this statement to the specified scope.
    * A return value implies a change in control flow.
    * @param vm
    */
-  public abstract apply(vm: Vm): Value | void;
+  apply(vm: Vm): Value | void;
+}
+
+export interface Declaration extends Statement {
+  getKey(): string;
+  getValue(vm: Vm): Value;
+}
+
+export interface Assignment extends Statement {
+  getKey(): string;
+  getValue(vm: Vm): Value;
 }
 
 export class StatementBlock extends Block {
@@ -63,39 +76,60 @@ export class StatementBlock extends Block {
   }
 }
 
-export class AssignmentStatement extends Statement {
-  public static readonly FLAG_DECLARE = 1 << 0;
-
+export class AssignmentStatement extends Node
+implements Assignment, Statement {
   public constructor(
       public target: AssignmentTarget,
       public valueExpr: Expression,
       public flags: number = 0) {
-    super(StatementKind.Assignment);
+    super(NodeKind.Assignment);
   }
 
-  public override apply(vm: Vm): void {
-    const value = this.valueExpr.evaluate(vm);
-    this.target.assign(value, vm);
+  public apply(vm: Vm): void {
+    vm.assign(this.getKey(), this.getValue(vm));
+  }
+
+  public getKey(): string {
+    return this.target.getKey();
+  }
+
+  public getValue(vm: Vm): Value {
+    return this.valueExpr.evaluate(vm);
   }
 }
 
-export class DeclarationStatement extends AssignmentStatement {
-  public constructor(target: AssignmentTarget, valueExpr: Expression,
+export class DeclarationStatement extends Node
+implements Declaration, Statement {
+  public constructor(
+      public target: AssignmentTarget,
+      public valueExpr: Expression,
       public info: DeclarationInfo) {
-    super(target, valueExpr);
-    this.type = StatementKind.Declaration;
+    super(NodeKind.Declaration);
   }
 
-  public override apply(vm: Vm) {
-    let value = this.valueExpr.evaluate(vm);
+  public apply(vm: Vm) {
+    let value = this.getValue(vm);
+    let type = types.ANY;
 
-    if (this.info.returnType) {
-      const type = this.info.returnType.evaluate(vm).data as ValueType;
+    if (this.info.type) {
+      type = this.info.type.evaluate(vm).data as ValueType;
       if (! type.isAssignable(value.type))
         throw new TypeError(`${value.type.name} not assignable to ${type.name}`);
     }
 
-    if (this.info.annotations?.length > 0) {
+    const key = this.target.getKey();
+    vm.declare(key, {type});
+    vm.assign(key, value);
+  }
+
+  public getKey(): string {
+    return this.target.getKey();
+  }
+
+  public getValue(vm: Vm): Value {
+    let value = this.valueExpr.evaluate(vm);
+
+    if (this.info.annotations) {
       for (let anno of this.info.annotations) {
         const func = anno.evaluate(vm);
         if (! types.FUNCTION.isAssignable(func.type))
@@ -104,27 +138,22 @@ export class DeclarationStatement extends AssignmentStatement {
       }
     }
 
-    const key = this.target.getKey();
-    vm.declare(key, {type: types.ANY});
-    vm.assign(key, value);
+    return value;
   }
 }
 
-export class FunctionDeclaration extends Statement {
-  public readonly target: AssignmentTarget;
-
+export class FunctionDeclaration extends Node
+implements Declaration, Statement {
   public constructor(
-      protected identifier: IdentifierExpression,
-      protected params: ParameterToken[],
-      protected body: Expression,
-      public info: DeclarationInfo) {
-    super(StatementKind.Function);
-    this.target = identifier;
+      public identifier: IdentifierExpression,
+      public params: ParameterToken[],
+      public body: Expression,
+      public info: FnDeclarationInfo) {
+    super(NodeKind.Declaration);
   }
 
-  public override apply(vm: Vm): void {
-    const val = new DashFunctionValue(this.getParameters(vm), this.body, vm);
-    vm.defineFn(this.identifier.getKey(), val);
+  public apply(vm: Vm): void {
+    vm.defineFn(this.getKey(), this.getValue(vm));
   }
 
   protected getParameters(vm: Vm): FnParameters {
@@ -145,56 +174,45 @@ export class FunctionDeclaration extends Statement {
         });
       }
     }
+
     return params;
   }
-}
 
-export class DestrAssignmentStatement extends Statement {
-  public constructor(
-      public lhs: IdentifierExpression[],
-      public rhs: Expression[]) {
-    super(StatementKind.DestrAssignment);
+  public getKey(): string {
+    return this.identifier.getKey();
   }
 
-  public override apply(vm: Vm) {
-    if (this.rhs.length < this.lhs.length)
-      throw new DashError("too few values to unpack");
-    if (this.rhs.length > this.lhs.length)
-      throw new DashError("too many values to unpack");
-
-    const values = new Map<AssignmentTarget, Value>();
-    for (let i = 0; i < this.lhs.length; i++) {
-      values.set(this.lhs[i], this.rhs[i].evaluate(vm));
-    }
-
-    for (let [target, value] of values) {
-      target.assign(value, vm);
-    }
+  public getValue(vm: Vm): FunctionValue {
+    return new DashFunctionValue(this.getParameters(vm),
+        this.body, vm);
   }
 }
 
-export class ExportStatement extends Statement {
-  public constructor(public declaration: DeclarationStatement) {
-    super(StatementKind.Export);
+export class ExportStatement extends Node
+implements Statement {
+  public constructor(public declaration: Declaration) {
+    super(NodeKind.Export);
   }
 
   public apply(vm: Vm) {
     this.declaration.apply(vm);
-    const key = this.declaration.target.getKey();
+    const key = this.declaration.getKey();
     vm.addExport(key);
   }
 }
 
-export class ForInStatement extends Statement {
+export class ForInStatement extends Node
+implements Statement {
   public constructor(
       public identifier: IdentifierExpression,
       public iterExpr: Expression,
       public block: StatementBlock) {
-    super(StatementKind.For);
+    super(NodeKind.ForIn);
   }
 
-  public override apply(vm: Vm): void {
-    const iter = this.iterExpr.evaluate(vm);
+  public apply(vm: Vm): void {
+    const iterMaybe = this.iterExpr.evaluate(vm);
+    const iter = iterMaybe.type.getIterator({vm}, iterMaybe);
     this.iterate(iter, vm);
   }
 
@@ -207,7 +225,6 @@ export class ForInStatement extends Statement {
     const key = this.identifier.getKey();
     const sub = vm.sub();
     sub.declare(key, {type: types.ANY});
-    let value: Value;
     while (isDoneFn.call(vm, []).data === 0) {
       const value = nextFn.call(vm, []);
       sub.assign(key, value);
@@ -216,15 +233,16 @@ export class ForInStatement extends Statement {
   }
 }
 
-export class IfStatement extends Statement {
+export class IfStatement extends Node
+implements Statement {
   public constructor(
       public condition: Expression,
       public block: StatementBlock,
       public elseBlock?: StatementBlock) {
-    super(StatementKind.If);
+    super(NodeKind.If);
   }
 
-  public override apply(vm: Vm) {
+  public apply(vm: Vm) {
     const cond = this.condition.evaluate(vm);
     if (cond.data) {
       return this.block.apply(vm);
@@ -234,34 +252,37 @@ export class IfStatement extends Statement {
   }
 }
 
-export class ReturnStatement extends Statement {
+export class ReturnStatement extends Node
+implements Statement {
   public constructor(public expr: Expression) {
-    super(StatementKind.Return);
+    super(NodeKind.Return);
   }
 
-  public override apply(vm: Vm) {
+  public apply(vm: Vm) {
     return this.expr.evaluate(vm);
   }
 }
 
-export class ThrowStatement extends Statement {
+export class ThrowStatement extends Node
+implements Statement {
   public constructor(public expr: Expression) {
-    super(StatementKind.Throw);
+    super(NodeKind.Throw);
   }
 
-  public override apply(vm: Vm): void {
+  public apply(vm: Vm): void {
     throw new DashError(`Thrown:\t${this.expr.evaluate(vm)}`);
   }
 }
 
-export class WhileStatement extends Statement {
+export class WhileStatement extends Node
+implements Statement {
   public constructor(
-      public condition: ValueExpression,
+      public condition: Expression,
       public block: StatementBlock) {
-    super(StatementKind.While);
+    super(NodeKind.While);
   }
 
-  public override apply(vm: Vm): void {
+  public apply(vm: Vm): void {
     while (this.condition.evaluate(vm).data !== 0)
       this.block.apply(vm);
   }

@@ -2,53 +2,57 @@
 @include "./number.ne"
 
 Array ->
-  %lbracket _ ArrayBody _ %rbracket
+  "[" _ ArrayBody _ "]"
     {% (d) => new expr.ArrayExpression(d[2]) %}
 
 Object ->
-  %hash %lbracket _ ObjectBody _ %rbracket
+  "#" "{" _ ObjectBody _ "}"
     {% (d) => new expr.ObjectExpression(d[3]) %}
 
 ArrayBody ->
-  ArrayBody _ %comma _ ArrayEl
-    {% (d) => [...d[0], d[4]] %}
+  ArrayBody _ "," _ ArrayEl {% (d) => [...d[0], d[4]] %}
   | ArrayEl {% (d) => [d[0]] %}
   | null {% () => [] %}
-
 ArrayEl ->
-  ForExpr {% id %}
-  | Expr  {% id %}
+  ForExpr      {% id %}
+  | ReturnExpr {% id %}
 
 ObjectBody ->
-  ObjectBody _ ObjectProperty _ %semi {% (d) => [...d[0], d[2]] %}
-  | ObjectProperty _ %semi {% (d) => [d[0]] %}
-  | %semi {% () => [] %}
+  ObjectProperty _ EOL _ ObjectBody (_ EOL):? {% (d) => [d[0], ...d[4]] %}
+  | ObjectProperty (_ EOL):? {% (d) => [d[0]] %}
+  | EOL {% () => [] %}
   | null {% () => [] %}
 
 ObjectProperty ->
   DeclarationStmt
     {% nth(0) %}
 
+BooleanLiteral ->
+  ("false" | "true") {% (d) => new expr.LiteralExpression({
+    "type": data.DatumType.Int8,
+    "value": d[0][0].value === "true" ? 1 : 0
+  }) %}
+
 StringLiteral ->
-  %string {% (d) => new expr.ValueExpression({
+  %string {% (d) => new expr.LiteralExpression({
     ...d[0],
     "type": data.DatumType.String
   }) %}
 
 TypeLiteral ->
-  %kw_type _ %lbrace _ TypeBody _ %rbrace
+  "type" _ "{" _ TypeBody _ "}"
     {% (d) => new expr.TypeExpression({
       "records": d[4]
     }) %}
 
 TypeBody ->
-  TypeBody _ %semi _ TypeField
+  TypeBody _ ";" _ TypeField
     {% (d) => [...d[0], d[4]] %}
-  | TypeField _ %semi
+  | TypeField _ ";"
     {% (d) => [d[0]] %}
   | null
     {% (d) => [] %}
 
 TypeField ->
-  Identifier _ %colon _ (Identifier | TypeLiteral)
+  Name _ ":" _ (Name | TypeLiteral)
     {% (d) => [d[0], d[4][0]] %}

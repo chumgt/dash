@@ -32,7 +32,7 @@
 
   // Some tokens have `as any` because Nearley-to-Typescript doesn't like it otherwise.
   const lexer = moo.compile({
-    identifier: {
+    name: {
       match: /[a-zA-Z_][a-zA-Z0-9_]*/,
       type: moo.keywords({
         "kw_as": "as",
@@ -43,6 +43,7 @@
         "kw_fn": "fn",
         "kw_for": "for",
         "kw_return": "return",
+        "kw_struct": "struct",
         "kw_switch": "switch",
         "kw_throw": "throw",
         "kw_type": "type",
@@ -77,17 +78,26 @@
       value: (x) => x.substring(1, x.length-1).replace("\\n", "\n")
     },
 
+    fnarrow: "=>",
+    concat: "..",
+    eqeq: "==",
+    neq: "!=",
+    gteq: ">=",
+    lteq: "<=",
+    andand: "&&",
+    oror: "||",
+
     comma: ",",
-    divide: "/",
-    minus: "-",
-    plus: "+",
-    power: "**",
-    times: "*",
+    pow: "**",
+    div: "/",
+    mul: "*",
+    add: "+",
+    sub: "-",
     dot: ".",
     colon: ":",
     semi: ";",
 
-    eq: "=",
+    equals: "=",
     gt: ">",
     lt: "<",
     and: "&",
@@ -135,103 +145,109 @@
 Chunk ->
   _ StmtBlockBody _
     {% (d) => new stmt.StatementBlock(d[1]) %}
-  | _ Expr _
+  | _ ReturnExpr _
     {% nth(1) %}
 
+EOL -> _ TERM:+
+TERM -> "\n" | ";"
+
 ExprBlock ->
-  %lbrace _ StmtBlockBody _ Expr _ %rbrace
+  "{" _ StmtBlockBody _ ReturnExpr _ "}"
     {% (d) => new expr.BlockExpression(
         new stmt.StatementBlock(d[2]), d[4]) %}
-  |  %lbrace _ StmtBlockBody _ ReturnStmt _ %rbrace
+  | "{" _ StmtBlockBody _ ReturnStmt _ "}"
     {% (d) => new expr.BlockExpression(
         new stmt.StatementBlock(d[2]), d[4].expr) %}
-  | Expr
+  | ReturnExpr
     {% (d) => new expr.BlockExpression(
         new stmt.StatementBlock([]), d[0]) %}
 
 StmtBlock ->
-  %lbrace _ StmtBlockBody _ %rbrace
+  "{" _ StmtBlockBody _ "}"
     {% (d) => new stmt.StatementBlock(d[2]) %}
-  | Stmt _ %semi
+  | Stmt EOL
     {% (d) => new stmt.StatementBlock([d[0]]) %}
-  | %semi
+  | ";"
     {% (d) => new stmt.StatementBlock([]) %}
 
 StmtBlockBody ->
-  StmtBlockBody _ Stmt {% (d) => [...d[0], d[2]] %}
-  | Stmt {% (d) => [d[0]] %}
+  StmtBlockBody EOL _ Stmt EOL:? {% (d) => [...d[0], d[3]] %}
+  | StmtBlockBody EOL {% (d) => d[0] %}
+  | Stmt EOL:? {% (d) => [d[0]] %}
+  | EOL {% (d) => [] %}
   | null {% (d) => [] %}
 
+ReturnExpr ->
+  IfExpr {% id %}
+
 Expr ->
-  # OpExpr     {% id %}
-  # | CastExpr {% id %}
-  IfExpr     {% id %}
-  # | SwitchExpr {% id %}
+  LogicalOrExpr   {% id %}
+  | FunctionLiteral {% id %}
 
 Stmt ->
-  AssignmentStmt {% id %}
-  | FunctionDecl {% id %}
-  | CallExpr   {% id %}
-  | ExportStmt {% id %}
-  | ForStmt    {% id %}
-  | IfStmt     {% id %}
-  | ReturnStmt {% id %}
-  | ThrowStmt  {% id %}
-  | WhileStmt  {% id %}
+  AssignmentStmt  {% id %}
+  | FunctionDecl  {% id %}
+  | CallExpr      {% id %}
+  | ExportStmt    {% id %}
+  | ForStmt       {% id %}
+  | IfStmt        {% id %}
+  | ReturnStmt    {% id %}
+  | ThrowStmt     {% id %}
+  | WhileStmt     {% id %}
   | StringLiteral {% id %} # comments
 
 ExportStmt ->
-  (AnnotationList _):? %kw_export __ DeclarationStmt
+  (AnnotationList __):? "export" __ DeclarationStmt
     {% (d) => new stmt.ExportStatement(
         d[0]?.[0] ? annotate(d[3], d[0][0]) : d[3]) %}
 
 CallExpr ->
-  Primary _ %lparen _ ArgList _ %rparen
+  Primary _ "(" _ ArgumentList _ ")"
     {% (d) => new expr.CallExpression(d[0], d[4]) %}
 
 CastExpr ->
-  Primary _ %kw_as _ Primary
+  Primary _ "as" _ Primary
     {% (d) => new expr.CastExpression(d[0], d[4]) %}
-  | OpExpr
+  | LogicalOrExpr
     {% id %}
 
 ForExpr ->
-  IfExpr __ %kw_for __ Identifier __ %kw_in __ OpExpr
+  IfExpr __ "for" __ Name __ "in" __ OpExpr
     {% (d) => new expr.ForMapExpression(d[4], d[8], d[0]) %}
 
 SwitchExpr ->
-  %kw_switch (_ Atom):? _ %lbrace _ SwitchBody _ %rbrace
+  "switch" (_ Atom):? _ "{" _ SwitchBody _ "}"
     {% (d) => new expr.SwitchExpression(d[1]?.[1], d[5].cases, d[5].defaultCase) %}
   | CastExpr
     {% id %}
 
 IfExpr ->
-  SwitchExpr __ %kw_if __ OpExpr __ %kw_else __ IfExpr
+  SwitchExpr __ "if" __ OpExpr __ "else" __ IfExpr
     {% (d) => new expr.IfExpression(d[4], d[0], d[8]) %}
   | SwitchExpr
     {% id %}
 
 IfStmt ->
-  %kw_if __ OpExpr _ StmtBlock (_ ElseClause):?
+  "if" __ OpExpr _ StmtBlock (_ ElseClause):?
     {% (d) => new stmt.IfStatement(d[2], d[4], d[5]?.[1]) %}
 ElseClause ->
-  %kw_else _ StmtBlock
+  "else" _ StmtBlock
     {% nth(2) %}
 
 ForStmt ->
-  %kw_for __ Identifier __ %kw_in __ OpExpr __ StmtBlock
+  "for" __ Name __ "in" __ OpExpr __ StmtBlock
     {% (d) => new stmt.ForInStatement(d[2], d[6], d[8]) %}
 
 ReturnStmt ->
-  %kw_return _ Expr
+  "return" _ ReturnExpr
     {% (d) => new stmt.ReturnStatement(d[2]) %}
 
 ThrowStmt ->
-  %kw_throw __ ExprBlock
+  "throw" __ ExprBlock
     {% (d) => new stmt.ThrowStatement(d[2]) %}
 
 WhileStmt ->
-  %kw_while __ OpExpr _ StmtBlock
+  "while" __ OpExpr _ StmtBlock
     {% (d) => new stmt.WhileStatement(d[2], d[4]) %}
 
 SwitchBody ->
@@ -243,16 +259,23 @@ SwitchCaseList ->
   | SwitchCase
     {% (d) => [d[0]] %}
 SwitchCase ->
-  OpExpr _ %eq %gt _ ExprBlock
+  OpExpr _ "=" ">" _ ExprBlock
     {% (d) => [d[0], d[5]] %}
 SwitchElseCase ->
-  %kw_else _ %eq %gt _ ExprBlock
+  "else" _ "=" ">" _ ExprBlock
     {% nth(5) %}
 
+Annotation ->
+  %at Primary
+    {% nth(1) %}
+AnnotationList ->
+  AnnotationList __ Annotation {% (d) => [...d[0], d[2]] %}
+  | Annotation {% (d) => [d[0]] %}
+
 Index ->
-  Primary _ %lbracket _ Expr _ %rbracket
+  Primary _ "[" _ ReturnExpr _ "]"
     {% (d) => new expr.DereferenceExpression(d[0], d[4]) %}
-  | Primary _ %dot Identifier
+  | Primary _ "." Name
     {% (d) => new expr.DereferenceExpression(d[0], d[3]) %}
 
 Primary ->
@@ -262,19 +285,24 @@ Primary ->
 
 Reference ->
   Index {% id %}
-  | Identifier {% id %}
+  | Name {% id %}
 
 Atom ->
-  %lparen _ Expr _ %rparen {% nth(2) %}
-  | Array         {% id %}
-  | Function      {% id %}
-  | Object        {% id %}
-  | Identifier    {% id %}
-  | NumberLiteral {% id %}
-  | StringLiteral {% id %}
-  | TypeLiteral   {% id %}
+  "(" _ ReturnExpr _ ")" {% nth(2) %}
+  | Array          {% id %}
+  | Function       {% id %}
+  | Object         {% id %}
+  | Name           {% id %}
+  | BooleanLiteral {% id %}
+  | NumberLiteral  {% id %}
+  | StringLiteral  {% id %}
+  | TypeLiteral    {% id %}
 
-Identifier ->
-  %identifier {%
-    (d) => new expr.IdentifierExpression(d[0].value)
+TypeSignature ->
+  ":" _ Primary
+    {% (d) => d[2] %}
+
+Name ->
+  %name {%
+    (d) => new expr.IdentifierExpression(d[0])
   %}

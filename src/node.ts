@@ -1,15 +1,25 @@
 import { Expression } from "./expression.js";
-import { Statement } from "./statement.js";
+import { LiteralToken } from "./token.js";
 import { Value } from "./vm/value.js";
 import { Vm } from "./vm/vm.js";
 
 export enum NodeKind {
+  Assignment,
   Block,
+  Declaration,
+  Export,
   Expression,
+  ForIn,
+  If,
+  Return,
   Statement,
   StatementList,
   Function,
-  Value
+  Literal,
+  Name,
+  Throw,
+  Value,
+  While
 }
 
 export interface AssignmentTarget {
@@ -61,5 +71,17 @@ export class Block extends Node {
 
   public [Symbol.iterator]() {
     return this.body.values();
+  }
+}
+
+export class Literal extends Node {
+  public constructor(public token: LiteralToken) {
+    super(NodeKind.Literal);
+  }
+}
+
+export class Name extends Node {
+  public constructor(public value: string) {
+    super(NodeKind.Name);
   }
 }

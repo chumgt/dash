@@ -1,5 +1,6 @@
 import { DatumType } from "./data.js";
 import { BinaryOpKind, Expression, ExpressionKind, IdentifierExpression, TypeExpression } from "./expression.js";
+import { Type } from "./type.js";
 
 export interface TokenSource {
   text: string;
@@ -64,17 +65,17 @@ export interface UnaryOpToken extends ExpressionToken {
 }
 
 /// Literal values.
-export interface ValueToken extends ExpressionToken {
+export interface LiteralToken extends Token {
   type: DatumType;
   value: any;
 }
 
-export interface NumberValueToken extends ValueToken {
+export interface NumberLiteralToken extends LiteralToken {
   value: number;
   base: number;
 }
 
-export interface StringValueToken extends ValueToken {
+export interface StringLiteralToken extends LiteralToken {
   value: string;
 }
 

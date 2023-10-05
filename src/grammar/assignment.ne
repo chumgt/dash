@@ -1,41 +1,46 @@
+@include "./function.ne"
 @lexer lexer
 
-AssignmentStmt ->
-  DeclarationStmt       {% id %}
-  # | DestrAssignmentStmt {% id %}
-  | ReassignmentStmt    {% id %}
-
-DeclarationStmt ->
-  (AnnotationList _):? Identifier _ %colon %colon:? (_ Primary):? _ %eq _ ExprBlock
+StaticDeclarationStmt ->
+  (AnnotationList _):? Name _ ":" ":" _ ExprBlock
     {% (d) => new stmt.DeclarationStatement(d[1], d[9], {
       "annotations": d[0]?.[0],
-      "returnType": d[5]?.[1]
+      "type": d[5]?.[1],
+      "constant": true
     }) %}
   | FunctionDecl
     {% id %}
 
-ReassignmentStmt ->
-  Reference _ %eq _ Expr
+DeclarationStmt ->
+  (AnnotationList _):? Name _ ":" TypeSignature:? _ "=" _ ExprBlock
+    {% (d) => new stmt.DeclarationStatement(d[1], d[8], {
+      "annotations": d[0]?.[0],
+      "type": d[4],
+      "constant": true
+    }) %}
+  | (AnnotationList _):? Name _ ":" ":" _ "=" _ ExprBlock
+    {% (d) => new stmt.DeclarationStatement(d[1], d[8], {
+      "annotations": d[0]?.[0],
+      "type": undefined,
+      "constant": true
+    }) %}
+  | (AnnotationList _):? Name _ TypeSignature _ "=" _ ExprBlock
+    {% (d) => new stmt.DeclarationStatement(d[1], d[7], {
+      "annotations": d[0]?.[0],
+      "type": d[3],
+      "constant": false
+    }) %}
+  | (AnnotationList _):? Name _ ":" "=" _ ExprBlock
+    {% (d) => new stmt.DeclarationStatement(d[1], d[6], {
+      "annotations": d[0]?.[0],
+      "type": undefined,
+      "constant": false
+    }) %}
+  | StaticDeclarationStmt
+    {% id %}
+
+AssignmentStmt ->
+  Reference _ "=" _ Expr
     {% (d) => new stmt.AssignmentStatement(d[0], d[4]) %}
-
-DestrAssignmentStmt ->
-  %lbracket _ DestrLBody _ %rbracket _ %eq _ %lbracket _ DestrRBody _ %rbracket
-    {% (d) => new stmt.DestrAssignmentStatement(d[2], d[10]) %}
-
-Annotation ->
-  %at Primary
-    {% nth(1) %}
-AnnotationList ->
-  AnnotationList __ Annotation {% (d) => [...d[0], d[2]] %}
-  | Annotation {% (d) => [d[0]] %}
-
-DestrLBody ->
-  DestrLBody _ %comma _ Identifier
-    {% (d) => [...d[0], d[4]] %}
-  | Identifier
-    {% (d) => [d[0]] %}
-DestrRBody ->
-  DestrRBody _ %comma _ Expr
-    {% (d) => [...d[0], d[4]] %}
-  | Expr
-    {% (d) => [d[0]] %}
+  | DeclarationStmt
+    {% id %}
