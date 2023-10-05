@@ -204,12 +204,12 @@ export function wrap(jsValue: any, type?: ValueType): Value | never {
     case "boolean":
       return new Value(types.INT8, jsValue ? 1 : 0);
     case "function":
-      return wrapFunction(((args) => {
+      return wrapFunction((args) => {
         const result = jsValue(...args.map(x => x.data));
         if (result)
           return wrap(result);
         throw new DashError("function returned nothing");
-      }));
+      });
     case "number":
       return new Value(types.FLOAT64, jsValue);
     case "object":

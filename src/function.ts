@@ -7,6 +7,7 @@ export interface FnArgument {
 export interface FnParameter {
   name: string;
   type: Type;
+  required: boolean;
 }
 
 export type FnArguments = FnArgument[];

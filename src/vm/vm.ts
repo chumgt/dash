@@ -23,16 +23,14 @@ export interface Vm {
   readonly platform: Platform;
   declare(identifier: string, header: ValueHeader): Vm;
   assign(identifier: string, value: Value): Vm;
-  defineFn(id: string, func: FunctionValue);
-  defineNs(ns: string, dir: string): void;
-  addExport(identifier: string, value?: Value): void;
+  defineFn(id: string, func: FunctionValue): Vm;
+  defineNs(ns: string, dir: string): Vm;
+  addExport(identifier: string, value?: Value): Vm;
   importModule(filepath: string): Value;
-  resolveImportPath(filepath: string): string;
   getExports(): Record<string, Value>;
   getExportsAsValue(): Value;
   get(identifier: string): Value | never;
   has(identifier: string): boolean;
-  save(): Vm;
   sub(): Vm;
   throwValue(val?: Value): never;
 }
@@ -89,9 +87,10 @@ export class DashJSVM implements Vm {
     if (func.params) {
       this.functions[id].set(func.params, func);
     }
+    return this;
   }
 
-  public defineNs(ns: string, dir: string): void {
+  public defineNs(ns: string, dir: string) {
     if (ns in this.namespaces)
       throw new VmError(`namespace '${ns}' already defined`);
 
@@ -102,12 +101,13 @@ export class DashJSVM implements Vm {
       dir += "/";
 
     this.namespaces[ns] = dir;
+    return this;
   }
 
-  public addExport(identifier: string, value?: Value): void {
+  public addExport(identifier: string, value?: Value) {
     if (value) {
       this.exports.set(identifier, value);
-      return;
+      return this;
     }
 
     if (! this.has(identifier))
@@ -257,9 +257,6 @@ export function newVm(env: Platform): Vm {
       if (! USE_JSFN)
         return args[0];
 
-      if (type) {
-        return type.wrap(js_value);
-      }
       return wrap(js_value, type);
     });
   });

@@ -143,51 +143,49 @@
 @include "src/grammar/whitespace.ne"
 
 Chunk ->
-  _ StmtBlockBody _
+  _ Statements _
     {% (d) => new stmt.StatementBlock(d[1]) %}
   | _ ReturnExpr _
     {% nth(1) %}
 
+DELIM -> _ ";":+
 EOL -> _ TERM:+
 TERM -> "\n" | ";"
 
 ExprBlock ->
-  "{" _ StmtBlockBody _ ReturnExpr _ "}"
+  "{" _ Statements:? _ ReturnExpr _ "}"
     {% (d) => new expr.BlockExpression(
-        new stmt.StatementBlock(d[2]), d[4]) %}
-  | "{" _ StmtBlockBody _ ReturnStmt _ "}"
+        new stmt.StatementBlock(d[2]??[]), d[4]) %}
+  | "{" _ Statements:? _ ReturnStmt _ "}"
     {% (d) => new expr.BlockExpression(
-        new stmt.StatementBlock(d[2]), d[4].expr) %}
+        new stmt.StatementBlock(d[2]??[]), d[4].expr) %}
   | ReturnExpr
     {% (d) => new expr.BlockExpression(
         new stmt.StatementBlock([]), d[0]) %}
 
 StmtBlock ->
-  "{" _ StmtBlockBody _ "}"
-    {% (d) => new stmt.StatementBlock(d[2]) %}
-  | Stmt EOL
+  "{" _ Statements:? _ "}"
+    {% (d) => new stmt.StatementBlock(d[2] ?? []) %}
+  | Stmt _ ";"
     {% (d) => new stmt.StatementBlock([d[0]]) %}
   | ";"
     {% (d) => new stmt.StatementBlock([]) %}
 
-StmtBlockBody ->
-  StmtBlockBody EOL _ Stmt EOL:? {% (d) => [...d[0], d[3]] %}
-  | StmtBlockBody EOL {% (d) => d[0] %}
-  | Stmt EOL:? {% (d) => [d[0]] %}
-  | EOL {% (d) => [] %}
-  | null {% (d) => [] %}
+Statements ->
+  Stmt DELIM:? _ Statements {% (d) => [d[0], ...d[3]] %}
+  | Stmt DELIM:? {% (d) => [d[0]] %}
+  | DELIM {% (d) => [] %}
 
 ReturnExpr ->
   IfExpr {% id %}
+  | FunctionLiteral {% id %}
 
 Expr ->
-  LogicalOrExpr   {% id %}
-  | FunctionLiteral {% id %}
+  LogicalOrExpr     {% id %}
 
 Stmt ->
   AssignmentStmt  {% id %}
-  | FunctionDecl  {% id %}
-  | CallExpr      {% id %}
+  | Call          {% id %}
   | ExportStmt    {% id %}
   | ForStmt       {% id %}
   | IfStmt        {% id %}
@@ -200,10 +198,6 @@ ExportStmt ->
   (AnnotationList __):? "export" __ DeclarationStmt
     {% (d) => new stmt.ExportStatement(
         d[0]?.[0] ? annotate(d[3], d[0][0]) : d[3]) %}
-
-CallExpr ->
-  Primary _ "(" _ ArgumentList _ ")"
-    {% (d) => new expr.CallExpression(d[0], d[4]) %}
 
 CastExpr ->
   Primary _ "as" _ Primary
@@ -259,14 +253,14 @@ SwitchCaseList ->
   | SwitchCase
     {% (d) => [d[0]] %}
 SwitchCase ->
-  OpExpr _ "=" ">" _ ExprBlock
-    {% (d) => [d[0], d[5]] %}
+  OpExpr _ "=>" _ ExprBlock
+    {% (d) => [d[0], d[4]] %}
 SwitchElseCase ->
-  "else" _ "=" ">" _ ExprBlock
-    {% nth(5) %}
+  "else" _ "=>" _ ExprBlock
+    {% nth(4) %}
 
 Annotation ->
-  %at Primary
+  "@" Primary
     {% nth(1) %}
 AnnotationList ->
   AnnotationList __ Annotation {% (d) => [...d[0], d[2]] %}
@@ -278,10 +272,14 @@ Index ->
   | Primary _ "." Name
     {% (d) => new expr.DereferenceExpression(d[0], d[3]) %}
 
+Call ->
+  Primary _ "(" _ Arguments:? _ ")"
+    {% (d) => new expr.CallExpression(d[0], d[4]??[]) %}
+
 Primary ->
-  Index      {% id %}
-  | CallExpr {% id %}
-  | Atom     {% id %}
+  Index  {% id %}
+  | Call {% id %}
+  | Atom {% id %}
 
 Reference ->
   Index {% id %}

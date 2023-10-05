@@ -1,18 +1,18 @@
 @lexer lexer
 
 FunctionLiteral ->
-  "fn" _ Parameters (_ TypeSignature):? _ FunctionBlock
+  "fn" _ "(" _ Parameters:? _ ")" (_ TypeSignature):? _ FunctionBlock
     {% (d) => new expr.FunctionExpression({
       kind: expr.ExpressionKind.Function,
-      block: d[5],
-      params: d[2],
-      returnType: d[3]?.[1]
+      block: d[9],
+      params: d[4]??[],
+      returnType: d[7]?.[1]
     }) %}
 
 FunctionDecl ->
-  (AnnotationList _):? "fn" __ Name _ Parameters (_ TypeSignature):? _ FunctionBlock
-    {% (d) => new stmt.FunctionDeclaration(d[3], d[5], d[8], {
-      "annotations": [],
+  (AnnotationList _):? "fn" __ Name _ "(" _ Parameters:? _ ")" (_ TypeSignature):? _ FunctionBlock
+    {% (d) => new stmt.FunctionDeclaration(d[3], d[7]??[], d[12], {
+      "annotations": d[0]?.[0],
       "returnType": d[10]?.[1]
     }) %}
 
@@ -24,25 +24,15 @@ FunctionBlock ->
     {% id %}
 
 Arguments ->
-  "(" _ ArgumentList _ ")"
-    {% nth(2) %}
-
-ArgumentList ->
-  ArgumentList _ "," _ Argument {% (d) => [...d[0], d[4]] %}
+  Arguments _ "," _ Argument {% (d) => [...d[0], d[4]] %}
   | Argument  {% (d) => [d[0]] %}
-  | null {% () => [] %}
 Argument ->
   ReturnExpr
     {% id %}
 
 Parameters ->
-  "(" _ ParameterList _ ")"
-    {% nth(2) %}
-
-ParameterList ->
-  ParameterList _ "," _ Parameter {% (d) => [...d[0], d[4]] %}
+  Parameters _ "," _ Parameter {% (d) => [...d[0], d[4]] %}
   | Parameter  {% (d) => [d[0]] %}
-  | null {% () => [] %}
 
 Parameter ->
   ParameterSignature (_ "=" _ Expr):?

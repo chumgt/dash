@@ -77,11 +77,8 @@ function main() {
   const chunks = parsing.parseAll(code);
   // console.log(`Parsed in ${Date.now()-checkpoint}ms`);
   const chunk = chunks[0];
-  if (chunks.length > 1) console.log("chunks: " + chunks.length);
-  let a=[];
-  for (const c of chunks)
-    a[JSON.stringify(c)] = 1;
-  console.log("down to " + Object.keys(a).length)
+  if (chunks.length > 1)
+    console.log("chunks: " + chunks.length);
   fs.writeFileSync("./ast.json", JSON.stringify(chunk, null, 2));
 
   checkpoint = Date.now();

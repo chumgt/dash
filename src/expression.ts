@@ -282,11 +282,13 @@ implements Expression {
           throw new DashError(`${param.name} is not typedef'd to a type`);
         params.push({
           name: param.name,
+          required: param.defaultValue === undefined,
           type: res.data
         });
       } else {
         params.push({
           name: param.name,
+          required: param.defaultValue === undefined,
           type: t_any
         });
       }
@@ -430,8 +432,7 @@ export class TypeExpression extends Node implements Expression {
       });
     }
 
-    const v = new Value(t_type, t);
-    return v;
+    return new Value(t_type, t);
   }
 }
 

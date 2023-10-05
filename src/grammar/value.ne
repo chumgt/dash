@@ -2,26 +2,23 @@
 @include "./number.ne"
 
 Array ->
-  "[" _ ArrayBody _ "]"
-    {% (d) => new expr.ArrayExpression(d[2]) %}
+  "[" _ ArrayElements:? _ "]"
+    {% (d) => new expr.ArrayExpression(d[2]??[]) %}
 
 Object ->
-  "#" "{" _ ObjectBody _ "}"
-    {% (d) => new expr.ObjectExpression(d[3]) %}
+  "#" "{" _ ObjectProperties:? _ "}"
+    {% (d) => new expr.ObjectExpression(d[3]??[]) %}
 
-ArrayBody ->
-  ArrayBody _ "," _ ArrayEl {% (d) => [...d[0], d[4]] %}
+ArrayElements ->
+  ArrayElements _ "," _ ArrayEl {% (d) => [...d[0], d[4]] %}
   | ArrayEl {% (d) => [d[0]] %}
-  | null {% () => [] %}
 ArrayEl ->
   ForExpr      {% id %}
   | ReturnExpr {% id %}
 
-ObjectBody ->
-  ObjectProperty _ EOL _ ObjectBody (_ EOL):? {% (d) => [d[0], ...d[4]] %}
-  | ObjectProperty (_ EOL):? {% (d) => [d[0]] %}
-  | EOL {% () => [] %}
-  | null {% () => [] %}
+ObjectProperties ->
+  ObjectProperty _ ";" _ ObjectProperties {% (d) => [d[0], ...d[4]] %}
+  | ObjectProperty EOL:? {% (d) => [d[0]] %}
 
 ObjectProperty ->
   DeclarationStmt

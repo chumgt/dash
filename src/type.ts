@@ -47,7 +47,9 @@ export class Type {
   public get name(): string {
     return this.header?.name ?? this.constructor.name;
   }
-
+  /**
+   * Ascend the type hierarchy.
+   */
   public *ascend(): Iterable<Type> {
     let target: Type = this;
     while (target.superType) {
@@ -55,7 +57,10 @@ export class Type {
       yield target;
     }
   }
-
+  /**
+   * Determine if this type is a sub-type of `type`.
+   * @param type The super-type to test.
+   */
   public extends(type: Type): boolean {
     for (let superType of this.ascend()) {
       if (superType === type)
@@ -64,6 +69,9 @@ export class Type {
     return false;
   }
 
+  /**
+   * @returns The type at the top of this type's hierarchy.
+   */
   public getBase(): Type {
     let base: Type = this;
     for (let superType of this.ascend())
@@ -82,14 +90,14 @@ export class Type {
     return depth;
   }
 
-  public getDistance(type: Type): number {
+  public getDistance(type: Type, _distance: number = 0): number {
     if (this.isImplicitCastableTo(type))
-      return 0;
+      return _distance;
 
-    if (type.isAssignable(this))
+    if (this.extends(type))
       return this.getDepth(type);
 
-    return Number.NaN;
+    throw new DashError("cannot get distance of unrelated types");
   }
 
   public isAssignable(type: Type): boolean {
@@ -107,9 +115,7 @@ export class Type {
   }
 
   public isImplicitCastableTo(type: Type): boolean {
-    if (type === this)
-      return true;
-    if (this.extends(type))
+    if (type === this || this.extends(type))
       return true;
     return false;
   }

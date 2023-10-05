@@ -165,11 +165,13 @@ implements Declaration, Statement {
           throw new DashError(`${param.name} is not typedef'd to a type`);
         params.push({
           name: param.name,
+          required: param.defaultValue === undefined,
           type: res.data
         });
       } else {
         params.push({
           name: param.name,
+          required: param.defaultValue === undefined,
           type: types.ANY
         });
       }
@@ -183,8 +185,19 @@ implements Declaration, Statement {
   }
 
   public getValue(vm: Vm): FunctionValue {
-    return new DashFunctionValue(this.getParameters(vm),
-        this.body, vm);
+    let value: FunctionValue = new DashFunctionValue(
+        this.getParameters(vm), this.body, vm);
+
+    if (this.info.annotations) {
+      for (let anno of this.info.annotations) {
+        const func = anno.evaluate(vm);
+        if (! types.FUNCTION.isAssignable(func.type))
+          throw new DashError("annotation must be a fn");
+        value = <any> (func as FunctionValue).call(vm, [value]);
+      }
+    }
+
+    return value;
   }
 }
 
