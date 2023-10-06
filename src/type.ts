@@ -35,6 +35,11 @@ export interface BuiltinTypeFactory {
   getType(type: DatumType): Type;
 }
 
+export interface Domain {
+  isAssignable(type: Type): boolean;
+  isCastable(type: Type): boolean;
+}
+
 export interface JSType<T> {
   wrap(value: T): Value;
 }

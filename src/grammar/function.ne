@@ -8,6 +8,13 @@ FunctionLiteral ->
       params: d[4]??[],
       returnType: d[8]
     }) %}
+  | "⨍" Name _ "=>" _ ReturnExpr
+    {% (d) => new expr.FunctionExpression({
+      kind: expr.ExpressionKind.Function,
+      block: new expr.BlockExpression(new stmt.StatementBlock([]), d[5]),
+      params: [],
+      returnType: undefined
+    }) %}
 
 FunctionDecl ->
   (Annotations _):? "fn" __ Name _ "(" _ Parameters:? _ ")" (_ TypeSignature):? _ FunctionBlock
@@ -24,14 +31,14 @@ FunctionBlock ->
     {% id %}
 
 Arguments ->
-  Arguments _ "," _ Argument {% (d) => [...d[0], d[4]] %}
+    Arguments _ "," _ Argument {% (d) => [...d[0], d[4]] %}
   | Argument  {% (d) => [d[0]] %}
 Argument ->
   ReturnExpr
     {% id %}
 
 Parameters ->
-  Parameters _ "," _ Parameter {% (d) => [...d[0], d[4]] %}
+    Parameters _ "," _ Parameter {% (d) => [...d[0], d[4]] %}
   | Parameter  {% (d) => [d[0]] %}
 Parameter ->
   ParameterSignature (_ "=" _ Expr):?

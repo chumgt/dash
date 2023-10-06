@@ -22,10 +22,6 @@ export enum NodeKind {
   While
 }
 
-export interface ArrayElement {
-  getArrayElements(): Value[];
-}
-
 export interface AssignmentTarget {
   assign(value: Value, vm: Vm): void;
   getKey(): string;
@@ -54,6 +50,7 @@ export type ChunkNode =
 export interface Visitor<T extends Node> {
   visit(node: T): void;
 }
+
 export class Node {
   public constructor(public kind: NodeKind) { }
 
@@ -69,12 +66,8 @@ export class Block extends Node {
 
   public override accept(visitor: Visitor<Node>): void {
     super.accept(visitor);
-    for (let node of this)
+    for (let node of this.body)
       node.accept(visitor);
-  }
-
-  public [Symbol.iterator]() {
-    return this.body.values();
   }
 }
 

@@ -9,11 +9,23 @@ export type Builtins = Readonly<{
   values: Record<string, Value>;
 }>
 
-export const TYPE = new ValueType();
-export const ERROR = new ValueType();
+export const ANY = new ValueType(undefined, {name: "any"});
+ANY.isAssignable = (type) => true;
+ANY.isImplicitCastableTo = (type) => true;
+ANY.isCastableTo = (type) => true;
+ANY.stringify = (value) => String(value.data);
+
+export const TYPE = new ValueType(ANY, {name: "type"});
+TYPE.isAssignable = (type) => true;
+TYPE.cast = function (this: ValueType, value) {
+  return new Value(this, value.data)
+};
+TYPE.isCastableTo = (type) => true;
+
+export const ERROR = new ValueType(TYPE, {name: "error"});
 export const JSTYPE = new ValueType(TYPE, {name: "<jstype>"});
 
-export const OBJECT = new ValueType(undefined, {name: "obj"});
+export const OBJECT = new ValueType(TYPE, {name: "obj"});
 OBJECT.operators[BinaryOpKind.Dereference] = (a, b) => {
   return a.properties?.[b.data] ?? a.data[b.data];
 };
@@ -34,7 +46,7 @@ OBJECT.getIterator = (ctx, value) => {
   throw new DashError("this object does not have an iterator");
 };
 
-export const ARRAY = new ValueType(undefined, {name: "Array"});
+export const ARRAY = new ValueType(TYPE, {name: "Array"});
 ARRAY.operators[BinaryOpKind.Dereference] = (a, b) => {
   const key = b.data;
   if (a.properties && key in a.properties)
@@ -47,13 +59,7 @@ ARRAY.getIterator = (ctx, value) => newArrayIterator(value);
 
 // export const ITERATOR = new ValueType(OBJECT, {name: "iterator"});
 
-
-export const ANY = new ValueType(undefined, {name: "any"});
-ANY.isAssignable = (type) => true;
-ANY.isImplicitCastableTo = (type) => true;
-ANY.isCastableTo = (type) => true;
-
-export const DATUM = new ValueType();
+export const DATUM = new ValueType(undefined, TYPE);
 export const NUMBER = new ValueType(DATUM, {name: "number"});
 NUMBER.operators[BinaryOpKind.Add] = (a, b) => new Value(a.type, a.data + b.data);
 NUMBER.operators[BinaryOpKind.Divide] = (a, b) => new Value(a.type, a.data / b.data);
@@ -112,7 +118,7 @@ INT.isAssignable = function (this: ValueType, type) {
 };
 
 export const FLOAT = new ValueType(NUMBER);
-export const FUNCTION = new ValueType(undefined, {name: "func"});
+export const FUNCTION = new ValueType(TYPE, {name: "func"});
 FUNCTION.wrap = function (value) {
   if (typeof value !== "function")
     throw new DashError(`expected function, received ${typeof value}`);
@@ -157,6 +163,7 @@ STRING.operators[BinaryOpKind.Dereference] = (a, b) => {
       throw new DashError(`property ${b.data} does not exist on string`);
   }
 };
+STRING.stringify = (value) => value.data;
 STRING.isIterable = (value) => true;
 STRING.getIterator = (ctx, value) => {
   let i = 0;

@@ -1,5 +1,6 @@
 @lexer lexer
 @include "./number.ne"
+@include "./string.ne"
 
 Array ->
   "[" _ ArrayElements:? _ "]"
@@ -30,25 +31,15 @@ BooleanLiteral ->
     "value": d[0][0].value === "true" ? 1 : 0
   }) %}
 
-StringLiteral ->
-  %string {% (d) => new expr.LiteralExpression({
-    ...d[0],
-    "type": data.DatumType.String
-  }) %}
-
 TypeLiteral ->
-  "type" _ "{" _ TypeBody _ "}"
+  "#" "type" _ "{" _ TypeFields:? _ "}"
     {% (d) => new expr.TypeExpression({
-      "records": d[4]
+      "records": d[5] ?? []
     }) %}
 
-TypeBody ->
-  TypeBody _ ";" _ TypeField
-    {% (d) => [...d[0], d[4]] %}
-  | TypeField _ ";"
-    {% (d) => [d[0]] %}
-  | null
-    {% (d) => [] %}
+TypeFields ->
+  TypeFields _ ";" _ TypeField DELIM:? {% d => [...d[0], d[4]] %}
+  | TypeField DELIM:? {% d => [d[0]] %}
 
 TypeField ->
   Name _ ":" _ (Name | TypeLiteral)

@@ -1,5 +1,5 @@
 import { DatumType } from "./data.js";
-import { BinaryOpKind, Expression, ExpressionKind, IdentifierExpression, TypeExpression } from "./expression.js";
+import { BinaryOpKind, Expression, ExpressionKind, NameExpression, TypeExpression } from "./expression.js";
 
 export interface TokenSource {
   text: string;
@@ -32,7 +32,7 @@ export interface BinaryOpToken extends ExpressionToken {
 }
 
 export interface FunctionDeclToken extends StatementToken {
-  identifier: IdentifierExpression;
+  identifier: NameExpression;
   block: Expression;
   params: ParameterToken[];
   returnType: ExpressionToken;
@@ -41,12 +41,12 @@ export interface FunctionDeclToken extends StatementToken {
 export interface FunctionExprToken extends ExpressionToken {
   block: Expression;
   params: ParameterToken[];
-  returnType: ExpressionToken;
+  returnType?: ExpressionToken;
 }
 
 export interface ParameterToken extends Token {
   name: string;
-  typedef?: IdentifierExpression;
+  typedef?: NameExpression;
   defaultValue?: Expression;
 }
 
@@ -56,7 +56,7 @@ export interface SwitchBlockToken extends Token {
 }
 
 export interface TypeToken extends Token {
-  records: [IdentifierExpression, IdentifierExpression | TypeExpression][];
+  records: [NameExpression, NameExpression | TypeExpression][];
 }
 
 export interface UnaryOpToken extends ExpressionToken {

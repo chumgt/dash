@@ -1,5 +1,5 @@
 import { DashError } from "./error.js";
-import { Expression, IdentifierExpression } from "./expression.js";
+import { Expression, NameExpression } from "./expression.js";
 import { FnParameters } from "./function.js";
 import { AssignmentTarget, Block, Node, NodeKind } from "./node.js";
 import { ParameterToken } from "./token.js";
@@ -7,6 +7,7 @@ import { ValueType } from "./type.js";
 import { DashFunctionValue, FunctionValue, Value } from "./vm/value.js";
 import { Vm } from "./vm/vm.js";
 import * as types from "./vm/types.js";
+import { DatumType } from "./data.js";
 
 export enum StatementKind {
   Assignment,
@@ -112,9 +113,13 @@ implements Declaration, Statement {
     let type = types.ANY;
 
     if (this.info.type) {
-      type = this.info.type.evaluate(vm).data as ValueType;
-      if (! type.isAssignable(value.type))
-        throw new TypeError(`${value.type.name} not assignable to ${type.name}`);
+      const typeV = this.info.type.evaluate(vm);
+      if (! type.isAssignable(typeV.type))
+        throw new TypeError(`invalid type def ${typeV}`);
+
+      type = typeV.data;
+      // if (! type.isAssignable(value.type))
+      //   throw new TypeError(`cannot assign ${value.type.name} to ${type.name}`);
     }
 
     const key = this.target.getKey();
@@ -145,7 +150,7 @@ implements Declaration, Statement {
 export class FunctionDeclaration extends Node
 implements Declaration, Statement {
   public constructor(
-      public identifier: IdentifierExpression,
+      public identifier: NameExpression,
       public params: ParameterToken[],
       public body: Expression,
       public info: FnDeclarationInfo) {
@@ -217,7 +222,7 @@ implements Statement {
 export class ForInStatement extends Node
 implements Statement {
   public constructor(
-      public identifier: IdentifierExpression,
+      public identifier: NameExpression,
       public iterExpr: Expression,
       public block: StatementBlock) {
     super(NodeKind.ForIn);

@@ -22,6 +22,7 @@ export class VmError extends DashError { }
 export interface Vm {
   readonly platform: Platform;
   declare(identifier: string, header: ValueHeader): Vm;
+  isDeclared(identifier: string): boolean;
   assign(identifier: string, value: Value): Vm;
   defineFn(id: string, func: FunctionValue): Vm;
   defineNs(ns: string, dir: string): Vm;
@@ -40,7 +41,6 @@ export class DashJSVM implements Vm {
   protected readonly parent: Vm;
   protected namespaces: Record<string, string>;
   protected declarations: Record<string, ValueHeader>;
-  protected defHeaders: Record<string, ValueHeader>;
   protected functions: Record<string, FunctionOverloads>;
   protected variables: Record<string, Value>;
   protected imports: Map<string, Value>;
@@ -50,7 +50,6 @@ export class DashJSVM implements Vm {
   public constructor(env: Platform) {
     this.platform = env;
     this.namespaces = { };
-    this.defHeaders = { };
     this.declarations = { };
     this.functions = { };
     this.variables = { };
@@ -60,10 +59,18 @@ export class DashJSVM implements Vm {
   }
 
   public declare(identifier: string, header: ValueHeader) {
-    if (identifier in this.defHeaders)
+    if (this.isDeclared(identifier))
       throw new DashError("already declared " + identifier);
     this.declarations[identifier] = header;
     return this;
+  }
+
+  public isDeclared(identifier: string): boolean {
+    if (identifier in this.declarations)
+      return true;
+    if (this.parent)
+      return this.parent.isDeclared(identifier);
+    return false;
   }
 
   public assign(identifier: string, value: Value) {
@@ -257,10 +264,6 @@ export function newVm(env: Platform): Vm {
   vm.declare("Array", {type: TYPE});
   vm.assign("Array", new Value(TYPE, ARRAY));
 
-  vm.declare("array", {type: FUNCTION});
-  vm.assign("array", wrapFunction((args) => {
-    return newArray(vm, args);
-  }));
   vm.declare("import", {type: FUNCTION});
   vm.assign("import", wrapFunction((args) => {
     return vm.importModule(args[0].data);

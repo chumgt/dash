@@ -1,5 +1,5 @@
 @{%
-  import * as moo from "moo";
+  import moo from "moo";
   import * as data from "../data.js";
   import * as expr from "../expression.js";
   import * as node from "../node.js";
@@ -37,6 +37,8 @@
     hexliteral: /0x[a-fA-F0-9]+/,
     octliteral: /0o[0-7]+/,
     decliteral: /0|[1-9][0-9]*/,
+    strescape: /\\|\{|u[0-9]{4}/,
+    istrescape: /\\|\$|\{|u[0-9]{4}/,
 
     decl: ["::", ":="],
     math: ["÷", "×", "π", "∞", "⨍", "⌈", "⌉", "⌊", "⌋", "²", "³", "√"],
@@ -68,7 +70,8 @@
     dollar: "$",
     hash: "#",
     under: "_",
-    //dquote: "\"",
+    dquote: "\"",
+    bslash: "\\",
     // "base2": "0b",
     // "base8": "0o",
     // "base16": "0x",
@@ -77,11 +80,11 @@
     //   match: /#[^\n]*/,
     //   value: (s) => s.substring(1)
     // },
-    string: {
-      match: /"(?:\\["bfnrt\/\\]|\\u[a-fA-F0-9]{4}|[^"])*"/,
-      lineBreaks: true,
-      value: (x) => x.substring(1, x.length-1).replace("\\n", "\n")
-    },
+    //string: {
+    //  match: /"(?:\\["bfnrt\/\\]|\\u[a-fA-F0-9]{4}|[^"])*"/,
+    //  lineBreaks: true,
+    //  value: (x) => JSON.parse(x.replace("\n", "\\n"))
+    //},
 
     name: {
       match: /[a-zA-Z_][a-zA-Z0-9_]*/,
@@ -97,7 +100,6 @@
         "kw_struct": "struct",
         "kw_switch": "switch",
         "kw_throw": "throw",
-        "kw_type": "type",
         "kw_while": "while",
         "kw_true": "true",
         "kw_false": "false"
@@ -159,27 +161,27 @@ StmtBlock ->
     {% (d) => new stmt.StatementBlock([]) %}
 
 Statements ->
-  Stmt DELIM:? _ Statements {% (d) => [d[0], ...d[3]] %}
+    Stmt DELIM:? _ Statements {% (d) => [d[0], ...d[3]] %}
   | Stmt DELIM:? {% (d) => [d[0]] %}
   | DELIM {% (d) => [] %}
 
 ReturnExpr ->
-  IfExpr {% id %}
-  | FunctionLiteral {% id %}
+    FunctionLiteral {% id %}
+  | IfExpr {% id %}
 
 Expr ->
-  LogicalOrExpr     {% id %}
+  LogicalOrExpr  {% id %}
 
 Stmt ->
-  AssignmentStmt {% id %}
-  | Call         {% id %}
-  | ExportStmt   {% id %}
-  | ForStmt      {% id %}
-  | IfStmt       {% id %}
-  | ReturnStmt   {% id %}
-  | ThrowStmt    {% id %}
-  | WhileStmt    {% id %}
-  | Comment      {% id %}
+    AssignmentStmt {% id %}
+  | Call           {% id %}
+  | ExportStmt     {% id %}
+  | ForStmt        {% id %}
+  | IfStmt         {% id %}
+  | ReturnStmt     {% id %}
+  | ThrowStmt      {% id %}
+  | WhileStmt      {% id %}
+  | Comment        {% id %}
 
 Comment ->
   StringLiteral StringLiteral StringLiteral
@@ -268,23 +270,24 @@ Call ->
     {% (d) => new expr.CallExpression(d[0], d[4]??[]) %}
 
 Primary ->
-  Index  {% id %}
+    Index  {% id %}
   | Call {% id %}
   | Atom {% id %}
 
 Reference ->
-  Index {% id %}
-  | Name {% id %}
+    Index {% id %}
+  | Name  {% id %}
 
 Atom ->
   "(" _ ReturnExpr _ ")" {% nth(2) %}
-  | Array          {% id %}
-  | Object         {% id %}
-  | BooleanLiteral {% id %}
-  | NumberLiteral  {% id %}
-  | StringLiteral  {% id %}
-  | Name           {% id %}
-  | TypeLiteral    {% id %}
+  | IString         {% id %}
+  | Array           {% id %}
+  | Object          {% id %}
+  | StringLiteral   {% id %}
+  | BooleanLiteral  {% id %}
+  | NumberLiteral   {% id %}
+  | Name            {% id %}
+  | TypeLiteral     {% id %}
 
 TypeSignature ->
   ":" _ Name
@@ -292,5 +295,5 @@ TypeSignature ->
 
 Name ->
   %name  {%
-    (d) => new expr.IdentifierExpression(d[0].value)
+    (d) => new expr.NameExpression(new node.Name(d[0].value))
   %}

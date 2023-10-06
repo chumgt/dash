@@ -1,6 +1,6 @@
 import { DatumType } from "./data.js";
 import { DashError } from "./error.js";
-import { AssignmentTarget, Literal, Name, Node, NodeKind } from "./node.js";
+import { AssignmentTarget, Literal, Name, Node, NodeKind, Visitor } from "./node.js";
 import { FunctionExprToken, LiteralToken, ParameterToken, TypeToken } from "./token.js";
 import { ValueType } from "./type.js";
 import { FnParameters } from "./function.js";
@@ -86,12 +86,30 @@ export enum ValueKind {
   String
 }
 
-export interface Expression extends Node {
+export interface ArrayElement {
+  getArrayElements(vm: Vm): Value[];
+}
+
+export interface Expression {
+  readonly kind: NodeKind;
   readonly type: ExpressionKind;
   evaluate(vm: Vm): Value;
 }
 
-export class BlockExpression extends Node
+export abstract class ValueExpression extends Node
+implements Expression, ArrayElement {
+  abstract readonly type: ExpressionKind;
+  // public constructor() {
+  //   super()
+  // }
+  public abstract evaluate(vm: Vm): Value;
+
+  public getArrayElements(vm: Vm): Value[] {
+    return [this.evaluate(vm)];
+  }
+}
+
+export class BlockExpression extends ValueExpression
 implements Expression {
   public constructor(
       public block: StatementBlock,
@@ -113,7 +131,7 @@ implements Expression {
   }
 }
 
-export class BinaryOpExpression extends Node
+export class BinaryOpExpression extends ValueExpression
 implements Expression {
   op: BinaryOpKind;
   lhs: Expression;
@@ -139,7 +157,7 @@ implements Expression {
   }
 }
 
-export class UnaryOpExpression extends Node
+export class UnaryOpExpression extends ValueExpression
 implements Expression {
   op: UnaryOpKind;
   rhs: Expression;
@@ -162,7 +180,7 @@ implements Expression {
   }
 }
 
-export class CallExpression extends Node
+export class CallExpression extends ValueExpression
 implements Expression {
   target: Expression;
   args: Expression[];
@@ -190,7 +208,7 @@ implements Expression {
   }
 }
 
-export class CastExpression extends Node
+export class CastExpression extends ValueExpression
 implements Expression {
   public constructor(
       public expr: Expression,
@@ -219,9 +237,9 @@ implements Expression {
 
 export class DereferenceExpression extends BinaryOpExpression
 implements AssignmentTarget {
-  declare rhs: IdentifierExpression;
+  declare rhs: NameExpression;
 
-  public constructor(lhs: Expression, rhs: IdentifierExpression) {
+  public constructor(lhs: Expression, rhs: NameExpression) {
     super(BinaryOpKind.Dereference, lhs, rhs);
   }
 
@@ -250,7 +268,7 @@ implements AssignmentTarget {
   }
 }
 
-export class FunctionExpression extends Node
+export class FunctionExpression extends ValueExpression
 implements Expression {
   block: Expression;
   params: ParameterToken[];
@@ -297,16 +315,16 @@ implements Expression {
   }
 }
 
-export class IdentifierExpression extends Name
+export class NameExpression extends ValueExpression
 implements Expression, AssignmentTarget {
-  public constructor(value: string) {
-    super(value);
+  public constructor(public name: Name) {
+    super(NodeKind.Name);
   }
 
   public get type() { return ExpressionKind.Identifier }
 
   public evaluate(vm: Vm): Value {
-    return vm.get(this.value);
+    return vm.get(this.getKey());
   }
 
   public assign(value: Value, vm: Vm): void {
@@ -314,11 +332,11 @@ implements Expression, AssignmentTarget {
   }
 
   public getKey() {
-    return this.value;
+    return this.name.value;
   }
 }
 
-export class IfExpression extends Node implements Expression {
+export class IfExpression extends ValueExpression implements Expression {
   public constructor(
       public condition: Expression,
       public tResult: Expression,
@@ -337,9 +355,9 @@ export class IfExpression extends Node implements Expression {
 }
 
 export class ForMapExpression extends Node
-implements Expression {
+implements Expression, ArrayElement {
   public constructor(
-      public identifier: IdentifierExpression,
+      public identifier: NameExpression,
       public iterExpr: Expression,
       public expr: BlockExpression) {
     super(NodeKind.Expression);
@@ -369,9 +387,14 @@ implements Expression {
     }
     return newArray(vm, values);
   }
+
+  public getArrayElements(vm: Vm): Value[] {
+    const v = this.evaluate(vm);
+    return v.data;
+  }
 }
 
-export class SwitchExpression extends Node implements Expression {
+export class SwitchExpression extends ValueExpression implements Expression {
   public constructor(
       public test: Expression | undefined,
       public patterns: [Expression, Expression][],
@@ -407,7 +430,7 @@ export class SwitchExpression extends Node implements Expression {
   }
 }
 
-export class TypeExpression extends Node implements Expression {
+export class TypeExpression extends ValueExpression implements Expression {
   public constructor(protected token: TypeToken) {
     super(NodeKind.Expression);
   }
@@ -421,7 +444,7 @@ export class TypeExpression extends Node implements Expression {
     for (let [recordK, recordV] of this.token.records) {
       const fieldK = recordK.getKey();
       const fieldT = recordV.evaluate(vm);
-      if (! fieldT.type.extends(t_type))
+      if (! t_type.isAssignable(fieldT.type))
         throw new DashError(`record ${fieldK} not typed`);
       t.fields[fieldK] = ({
         name: fieldK,
@@ -433,10 +456,10 @@ export class TypeExpression extends Node implements Expression {
   }
 }
 
-export class LiteralExpression extends Literal
-implements Expression {
-  public constructor(token: LiteralToken) {
-    super(token);
+export class LiteralExpression extends ValueExpression
+implements Expression, Literal {
+  public constructor(public token: LiteralToken) {
+    super(NodeKind.Literal);
   }
 
   public get type() { return ExpressionKind.Value }
@@ -446,9 +469,9 @@ implements Expression {
   }
 }
 
-export class ArrayExpression extends Node
+export class ArrayExpression extends ValueExpression
 implements Expression {
-  public constructor(public content: Expression[]) {
+  public constructor(public content: ArrayElement[]) {
     super(NodeKind.Value);
   }
 
@@ -457,18 +480,19 @@ implements Expression {
   public evaluate(vm: Vm): Value {
     const values: Value[] = [ ];
     for (let expr of this.content) {
-      const result = expr.evaluate(vm);
-      if (expr.type === ExpressionKind.For) {
-        values.push(...result.data);
-      } else {
-        values.push(result);
-      }
+      // const result = expr.evaluate(vm);
+      // if (expr.type === ExpressionKind.For) {
+      //   values.push(...result.data);
+      // } else {
+      //   values.push(result);
+      // }
+      values.push(...expr.getArrayElements(vm));
     }
     return newArray(vm, values);
   }
 }
 
-export class ObjectExpression extends Node
+export class ObjectExpression extends ValueExpression
 implements Expression {
   public constructor(public properties: Declaration[]) {
     super(NodeKind.Value);
@@ -484,6 +508,35 @@ implements Expression {
       data[key] = decl.getValue(vm);
     }
     return new Value(t_object, data);
+  }
+}
+
+export class InterpolatedStringExpression extends ValueExpression
+implements Expression {
+  public constructor(public parts: (string | Expression)[]) {
+    super(NodeKind.Value);
+  }
+
+  public get type() { return ExpressionKind.String }
+
+  public override evaluate(vm: Vm): Value {
+    const {
+      [DatumType.String]: t_String
+    } = vm.platform.getBaseTypes();
+
+    let value = new Value(t_String, "");
+    for (let part of this.parts) {
+      let strpart: string;
+      if (typeof part === "string") {
+        strpart = part;
+      } else {
+        const partV = part.evaluate(vm);
+        strpart = partV.type.stringify(partV);
+      }
+
+      value = new Value(t_String, value.data + strpart);
+    }
+    return value;
   }
 }
 
