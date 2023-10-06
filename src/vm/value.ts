@@ -137,7 +137,7 @@ export function newArray(vm: Vm, values: Value[]): Value {
     }),
     has: wrapFunction((args) => {
       const index = self.data.findIndex(x => x.data === args[0].data);
-      return new Value(t_Boolean, index >= 0 ? 1 : 0);
+      return new Value(t_Int32, index >= 0 ? 1 : 0);
     }),
     toString: wrapFunction((args) =>
       new Value(t_String, self.data.join(", "))

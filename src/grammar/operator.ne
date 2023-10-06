@@ -1,9 +1,5 @@
 @lexer lexer
 
-OpExpr ->
-  LogicalOrExpr
-    {% id %}
-
 ExponentialExpr ->
   Primary _ "**" _ ExponentialExpr
     {% (d) => new expr.BinaryOpExpression(expr.BinaryOpKind.Exponential, d[0], d[4]) %}

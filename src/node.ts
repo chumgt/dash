@@ -22,6 +22,10 @@ export enum NodeKind {
   While
 }
 
+export interface ArrayElement {
+  getArrayElements(): Value[];
+}
+
 export interface AssignmentTarget {
   assign(value: Value, vm: Vm): void;
   getKey(): string;

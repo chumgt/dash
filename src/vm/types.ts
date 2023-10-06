@@ -1,8 +1,8 @@
-import { DashError } from "..";
-import { DatumType } from "../data";
-import { BinaryOpKind, UnaryOpKind } from "../expression";
-import { ValueType } from "../type";
-import { FunctionValue, NativeFunctionContext, Value, newArray, newArrayIterator, newRangeIter, wrap, wrapFunction } from "./value";
+import { DatumType } from "../data.js";
+import { DashError } from "../error.js";
+import { BinaryOpKind, UnaryOpKind } from "../expression.js";
+import { ValueType } from "../type.js";
+import { FunctionValue, NativeFunctionContext, Value, newArray, newArrayIterator, newRangeIter, wrap, wrapFunction } from "./value.js";
 
 export type Builtins = Readonly<{
   types: Record<DatumType, any>;
@@ -18,14 +18,20 @@ OBJECT.operators[BinaryOpKind.Dereference] = (a, b) => {
   return a.properties?.[b.data] ?? a.data[b.data];
 };
 OBJECT.isIterable = (value) => {
-  return FUNCTION.isAssignable(value.data.done)
-      && FUNCTION.isAssignable(value.data.next)
+  return FUNCTION.isAssignable(value.data.done.type)
+      && FUNCTION.isAssignable(value.data.next.type)
 };
 OBJECT.getIterator = (ctx, value) => {
-  if (! OBJECT.isIterable(value))
-    throw new DashError("object does not have an iterator");
-  return (value.data.iter as FunctionValue)
-      .call(ctx.vm, []);
+  if (OBJECT.isIterable(value))
+    return value;
+
+  if (value.data.iter && FUNCTION.isAssignable(value.data.iter)) {
+    const iter = (value.data.iter as FunctionValue).call(ctx.vm, []);
+    if (iter.type.isIterable(iter))
+      return iter;
+  }
+
+  throw new DashError("this object does not have an iterator");
 };
 
 export const ARRAY = new ValueType(undefined, {name: "Array"});
@@ -66,8 +72,11 @@ NUMBER.operators[BinaryOpKind.Concat] = (a, b) => new Value(STRING, String(a.dat
 NUMBER.operators[UnaryOpKind.Negate] = (a) => new Value(a.type, -a.data);
 NUMBER.operators[UnaryOpKind.Not] = (a) => new Value(INT8, a.data ? 0 : 1);
 NUMBER.cast = function (value) {
-  throw new DashError("ambiguous number type");
+  if (! NUMBER.isAssignable(value.type))
+    throw new DashError("ambiguous number type");
+  return new Value(NUMBER, value.data)
 };
+NUMBER.stringify = (value) => String(value.data);
 NUMBER.wrap = function (value) {
   if (typeof value !== "number")
     throw new DashError(`expected number, received ${typeof value}`);
@@ -76,6 +85,8 @@ NUMBER.wrap = function (value) {
 NUMBER.isAssignable = function (type) {
   return type.isTypeOf(NUMBER);
 };
+NUMBER.isImplicitCastableTo = (type) =>
+    NUMBER.isAssignable(type);
 
 export const INT = new ValueType(NUMBER);
 INT.operators[BinaryOpKind.Concat] = (a, b, vm) => {
@@ -96,19 +107,8 @@ INT.operators[BinaryOpKind.Concat] = (a, b, vm) => {
     throw new DashError(`concat op on ${a.type.name} and ${b.type.name}`);
   }
 };
-INT.from = function (this: ValueType, type, value) {
-  switch (type) {
-    case DatumType.String:
-      return new Value(INT32, Number.parseInt(value));
-    default:
-      throw new DashError("illegal cast");
-  }
-};
 INT.isAssignable = function (this: ValueType, type) {
   return type.isTypeOf(INT);
-};
-INT.isImplicitCastableTo = function (type) {
-  return type.extends(INT);
 };
 
 export const FLOAT = new ValueType(NUMBER);
@@ -130,9 +130,14 @@ export const INT8 = new ValueType(INT, {name: "int8", byteLength: 1});
 export const INT16 = new ValueType(INT, {name: "int16", byteLength: 2});
 export const INT32 = new ValueType(INT, {name: "int32", byteLength: 4});
 export const INT64 = new ValueType(INT, {name: "int64", byteLength: 8});
+INT64.isCastableTo = (type) =>
+  FLOAT64.isAssignable(type);
+// INT64.cast = (value) =>
 
 export const FLOAT32 = new ValueType(FLOAT, {name: "float32", byteLength: 4});
 export const FLOAT64 = new ValueType(FLOAT, {name: "float64", byteLength: 8});
+FLOAT64.cast = (value) =>
+    new Value(FLOAT64, value.data);
 
 export const STRING = new ValueType(DATUM, {name: "string"});
 STRING.operators[BinaryOpKind.Concat] = (a, b) => new Value(STRING, String(a.data) + String(b.data));

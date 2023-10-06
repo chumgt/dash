@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import paths from "node:path";
 import rlsync from "readline-sync";
-import { DatumType } from "../data.js";
+import { DatumType, typeToNameMap } from "../data.js";
 import { DashError } from "../error.js";
 import { Expression } from "../expression.js";
 import { NodeKind } from "../node.js";
@@ -217,13 +217,6 @@ export class DashJSVM implements Vm {
   }
 }
 
-export function resolveImportPath(path: string): string {
-  if (! path.endsWith(".dash"))
-    return resolveImportPath(`${path}.dash`);
-
-  return paths.normalize(path);
-}
-
 export function newVm(env: Platform): Vm {
   const vm = new DashJSVM(env);
 
@@ -276,12 +269,7 @@ export function newVm(env: Platform): Vm {
   vm.assign("input", wrapFunction((args) => {
     const question = args[0]?.data ?? "";
     const answer = rlsync.question(question);
-    if (args[1]) {
-      const type = args[1].data as ValueType;
-      return type.from(DatumType.String, answer);
-    } else {
-      return new Value(STRING, answer);
-    }
+    return new Value(STRING, answer);
   }));
   vm.declare("typeof", {type: FUNCTION});
   vm.assign("typeof", wrapFunction((args) => {
@@ -317,15 +305,6 @@ export function newVm(env: Platform): Vm {
       const b = args[1].data;
       return new Value(args[0].type, a % b);
     })
-  }));
-  vm.declare("new", {type: FUNCTION});
-  vm.assign("new", wrapFunction((args) => {
-    const t = args[0].data;
-    const v = new Value(OBJECT, 0, {
-      ["foo"]: new Value(STRING, "bar!"),
-      ["t"]: t
-    });
-    return v;
   }));
 
   vm.defineNs("dash", "./stdlib/");

@@ -10,6 +10,11 @@ import { DatumType, nameToTypeMap } from "./data.js";
 import * as parsing from "./parse.js";
 import * as types from "./vm/types.js";
 
+const dImportFunction = new Function("modulePath", "return import(modulePath)");
+export async function dimport<T extends string>(module: T): Promise<any> {
+  return await dImportFunction(module);
+}
+
 // export function dostring(str: string, vm = new DashJSVM): Value {
 //   const chunk = parsing.parse(str);
 //   return dochunk(chunk, vm);
@@ -27,7 +32,7 @@ import * as types from "./vm/types.js";
 //   }
 // }
 
-function main() {
+async function main() {
   const pargs = yargs
       .string("printast")
         .choices("printast", ["all", "one"])
@@ -49,6 +54,7 @@ function main() {
     return;
   }
 
+  const chalk = await dimport("chalk");
   const env = new Platform();
   env.defineBaseType(DatumType.Float, types.FLOAT)
   env.defineBaseType(DatumType.Float32, types.FLOAT32)
@@ -68,14 +74,13 @@ function main() {
 
   const vm = newVm(env);
   for (let key of Object.keys(nameToTypeMap)) {
-    vm.declare(key, {type: types.ANY});
+    vm.declare(key, {type: types.TYPE});
     vm.assign(key, env.getBaseTypeAsValue(nameToTypeMap[key]));
   }
 
   const code = args.eval ?? fs.readFileSync(args.file!, "utf-8");
   let checkpoint = Date.now();
   const chunks = parsing.parseAll(code);
-  // console.log(`Parsed in ${Date.now()-checkpoint}ms`);
   const chunk = chunks[0];
   if (chunks.length > 1)
     console.log("chunks: " + chunks.length);
@@ -85,15 +90,16 @@ function main() {
   const res = (chunk.kind === NodeKind.Expression)
       ? (chunk as Expression).evaluate(vm)
       : (chunk as StatementBlock).apply(vm);
-  console.log(`\n\nDone in ${Date.now()-checkpoint}ms!`);
+  const ms = Date.now() - checkpoint;
   if (res) {
-    console.log(res.toString());
+    console.log(chalk.default.yellow(res.type.stringify(res)));
   } else {
     vm.getExportsAsValue();
     for (let [key, value] of Object.entries(vm.getExports())) {
       console.log(`export ${key} = ${value.toString()}`);
     }
   }
+  console.log(`\n\nDone in ${ms}ms!`);
 }
 
 if (module === require.main)

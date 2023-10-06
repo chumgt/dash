@@ -1,16 +1,16 @@
 @lexer lexer
 
 FunctionLiteral ->
-  "fn" _ "(" _ Parameters:? _ ")" (_ TypeSignature):? _ FunctionBlock
+  ("fn" | "⨍") _ "(" _ Parameters:? _ ")" _ TypeSignature:? _ FunctionBlock
     {% (d) => new expr.FunctionExpression({
       kind: expr.ExpressionKind.Function,
-      block: d[9],
+      block: d[10],
       params: d[4]??[],
-      returnType: d[7]?.[1]
+      returnType: d[8]
     }) %}
 
 FunctionDecl ->
-  (AnnotationList _):? "fn" __ Name _ "(" _ Parameters:? _ ")" (_ TypeSignature):? _ FunctionBlock
+  (Annotations _):? "fn" __ Name _ "(" _ Parameters:? _ ")" (_ TypeSignature):? _ FunctionBlock
     {% (d) => new stmt.FunctionDeclaration(d[3], d[7]??[], d[12], {
       "annotations": d[0]?.[0],
       "returnType": d[10]?.[1]
@@ -33,7 +33,6 @@ Argument ->
 Parameters ->
   Parameters _ "," _ Parameter {% (d) => [...d[0], d[4]] %}
   | Parameter  {% (d) => [d[0]] %}
-
 Parameter ->
   ParameterSignature (_ "=" _ Expr):?
     {% (d) => Object.assign({

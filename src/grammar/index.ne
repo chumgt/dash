@@ -32,6 +32,57 @@
 
   // Some tokens have `as any` because Nearley-to-Typescript doesn't like it otherwise.
   const lexer = moo.compile({
+    // base: ["0b", "0o", "0x"],
+    binliteral: /0b[01]+/,
+    hexliteral: /0x[a-fA-F0-9]+/,
+    octliteral: /0o[0-7]+/,
+    decliteral: /0|[1-9][0-9]*/,
+
+    decl: ["::", ":="],
+    math: ["÷", "×", "π", "∞", "⨍", "⌈", "⌉", "⌊", "⌋", "²", "³", "√"],
+    op: ["==", "!=", ">=", ">", "<=", "<", "..", "&&", "||"],
+
+    fnarrow: "=>",
+
+    pow: "**",
+    div: "/",
+    mul: "*",
+    add: "+",
+    sub: "-",
+    dot: ".",
+    semi: ";",
+    colon: ":",
+    comma: ",",
+
+    equals: "=",
+    exclm: "!",
+
+    lbracket: "[",
+    rbracket: "]",
+    lbrace: "{",
+    rbrace: "}",
+    lparen: "(",
+    rparen: ")",
+
+    at: "@",
+    dollar: "$",
+    hash: "#",
+    under: "_",
+    //dquote: "\"",
+    // "base2": "0b",
+    // "base8": "0o",
+    // "base16": "0x",
+
+    // comment: {
+    //   match: /#[^\n]*/,
+    //   value: (s) => s.substring(1)
+    // },
+    string: {
+      match: /"(?:\\["bfnrt\/\\]|\\u[a-fA-F0-9]{4}|[^"])*"/,
+      lineBreaks: true,
+      value: (x) => x.substring(1, x.length-1).replace("\\n", "\n")
+    },
+
     name: {
       match: /[a-zA-Z_][a-zA-Z0-9_]*/,
       type: moo.keywords({
@@ -52,82 +103,18 @@
         "kw_false": "false"
       })
     },
-    float: {
-      match: /[0-9]+\.[0-9]+/,
-      value: (x) => Number.parseFloat(x) as any
-    },
-    base2: {
-      match: /0b[0-1]+/,
-      value: (x) => Number.parseInt(x.substring(2), 2) as any
-    },
-    base8: {
-      match: /0o[0-7]+/,
-      value: (x) => Number.parseInt(x.substring(2), 8) as any
-    },
-    base16: {
-      match: /0x[a-fA-F0-9]+/,
-      value: (x) => Number.parseInt(x.substring(2), 16) as any
-    },
-    base10: {
-      match: /0|[1-9][0-9]*/,
-      value: (x) => Number.parseInt(x, 10) as any
-    },
-    string: {
-      match: /"(?:\\["bfnrt\/\\]|\\u[a-fA-F0-9]{4}|[^"])*"/,
-      lineBreaks: true,
-      value: (x) => x.substring(1, x.length-1).replace("\\n", "\n")
-    },
 
-    fnarrow: "=>",
-    concat: "..",
-    eqeq: "==",
-    neq: "!=",
-    gteq: ">=",
-    lteq: "<=",
-    andand: "&&",
-    oror: "||",
-
-    comma: ",",
-    pow: "**",
-    div: "/",
-    mul: "*",
-    add: "+",
-    sub: "-",
-    dot: ".",
-    colon: ":",
-    semi: ";",
-
-    equals: "=",
-    gt: ">",
-    lt: "<",
-    and: "&",
-    or: "|",
-    not: "!",
-
-    lbracket: "[",
-    rbracket: "]",
-    lbrace: "{",
-    rbrace: "}",
-    lparen: "(",
-    rparen: ")",
-
-    // fslash: "/",
-    // bslash: "\\",
-    at: "@",
-    dollar: "$",
-    hash: "#",
-    under: "_",
-
-    infinity: "\u221E",
-
-    // comment: {
-    //   match: /#[^\n]*/,
-    //   value: (s) => s.substring(1)
-    // },
     ws: {
       match: /[ \t\n\v\f]+/,
       lineBreaks: true
-    }
+    },
+
+    //number: /[0-9]/,
+    //hexdigit: /[a-fA-F0-9]/,
+    //decdigit: /[0-9]/,
+    //octdigit: /[0-7]/,
+    //bindigit: /[01]/,
+    //alphanum: /[a-zA-Z0-9]+/
   });
 %}
 
@@ -156,7 +143,7 @@ ExprBlock ->
   "{" _ Statements:? _ ReturnExpr _ "}"
     {% (d) => new expr.BlockExpression(
         new stmt.StatementBlock(d[2]??[]), d[4]) %}
-  | "{" _ Statements:? _ ReturnStmt _ "}"
+  | "{" _ Statements:? _ ReturnStmt EOL:? _ "}"
     {% (d) => new expr.BlockExpression(
         new stmt.StatementBlock(d[2]??[]), d[4].expr) %}
   | ReturnExpr
@@ -184,18 +171,22 @@ Expr ->
   LogicalOrExpr     {% id %}
 
 Stmt ->
-  AssignmentStmt  {% id %}
-  | Call          {% id %}
-  | ExportStmt    {% id %}
-  | ForStmt       {% id %}
-  | IfStmt        {% id %}
-  | ReturnStmt    {% id %}
-  | ThrowStmt     {% id %}
-  | WhileStmt     {% id %}
-  | StringLiteral {% id %} # comments
+  AssignmentStmt {% id %}
+  | Call         {% id %}
+  | ExportStmt   {% id %}
+  | ForStmt      {% id %}
+  | IfStmt       {% id %}
+  | ReturnStmt   {% id %}
+  | ThrowStmt    {% id %}
+  | WhileStmt    {% id %}
+  | Comment      {% id %}
+
+Comment ->
+  StringLiteral StringLiteral StringLiteral
+    {% d => new stmt.StatementBlock([]) %}
 
 ExportStmt ->
-  (AnnotationList __):? "export" __ DeclarationStmt
+  (Annotations _):? "export" __ DeclarationStmt
     {% (d) => new stmt.ExportStatement(
         d[0]?.[0] ? annotate(d[3], d[0][0]) : d[3]) %}
 
@@ -206,7 +197,7 @@ CastExpr ->
     {% id %}
 
 ForExpr ->
-  IfExpr __ "for" __ Name __ "in" __ OpExpr
+  IfExpr __ "for" __ Name __ "in" __ LogicalOrExpr
     {% (d) => new expr.ForMapExpression(d[4], d[8], d[0]) %}
 
 SwitchExpr ->
@@ -216,20 +207,20 @@ SwitchExpr ->
     {% id %}
 
 IfExpr ->
-  SwitchExpr __ "if" __ OpExpr __ "else" __ IfExpr
+  SwitchExpr __ "if" __ LogicalOrExpr __ "else" __ IfExpr
     {% (d) => new expr.IfExpression(d[4], d[0], d[8]) %}
   | SwitchExpr
     {% id %}
 
 IfStmt ->
-  "if" __ OpExpr _ StmtBlock (_ ElseClause):?
+  "if" __ LogicalOrExpr _ StmtBlock (_ ElseClause):?
     {% (d) => new stmt.IfStatement(d[2], d[4], d[5]?.[1]) %}
 ElseClause ->
   "else" _ StmtBlock
     {% nth(2) %}
 
 ForStmt ->
-  "for" __ Name __ "in" __ OpExpr __ StmtBlock
+  "for" __ Name __ "in" __ LogicalOrExpr __ StmtBlock
     {% (d) => new stmt.ForInStatement(d[2], d[6], d[8]) %}
 
 ReturnStmt ->
@@ -241,7 +232,7 @@ ThrowStmt ->
     {% (d) => new stmt.ThrowStatement(d[2]) %}
 
 WhileStmt ->
-  "while" __ OpExpr _ StmtBlock
+  "while" __ LogicalOrExpr _ StmtBlock
     {% (d) => new stmt.WhileStatement(d[2], d[4]) %}
 
 SwitchBody ->
@@ -253,18 +244,18 @@ SwitchCaseList ->
   | SwitchCase
     {% (d) => [d[0]] %}
 SwitchCase ->
-  OpExpr _ "=>" _ ExprBlock
+  LogicalOrExpr _ "=>" _ ExprBlock
     {% (d) => [d[0], d[4]] %}
 SwitchElseCase ->
   "else" _ "=>" _ ExprBlock
     {% nth(4) %}
 
+Annotations ->
+  Annotations __ Annotation {% (d) => [...d[0], d[2]] %}
+  | Annotation {% (d) => [d[0]] %}
 Annotation ->
   "@" Primary
     {% nth(1) %}
-AnnotationList ->
-  AnnotationList __ Annotation {% (d) => [...d[0], d[2]] %}
-  | Annotation {% (d) => [d[0]] %}
 
 Index ->
   Primary _ "[" _ ReturnExpr _ "]"
@@ -288,19 +279,18 @@ Reference ->
 Atom ->
   "(" _ ReturnExpr _ ")" {% nth(2) %}
   | Array          {% id %}
-  | Function       {% id %}
   | Object         {% id %}
-  | Name           {% id %}
   | BooleanLiteral {% id %}
   | NumberLiteral  {% id %}
   | StringLiteral  {% id %}
+  | Name           {% id %}
   | TypeLiteral    {% id %}
 
 TypeSignature ->
-  ":" _ Primary
+  ":" _ Name
     {% (d) => d[2] %}
 
 Name ->
-  %name {%
-    (d) => new expr.IdentifierExpression(d[0])
+  %name  {%
+    (d) => new expr.IdentifierExpression(d[0].value)
   %}

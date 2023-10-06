@@ -69,6 +69,10 @@ export class Type {
     return false;
   }
 
+  public stringify(value: Value): string {
+    return this.superType?.stringify(value) ?? value.toString();
+  }
+
   /**
    * @returns The type at the top of this type's hierarchy.
    */
@@ -150,10 +154,9 @@ export class ValueType extends Type {
   }
 
   public cast(value: Value): Value | never {
+    if (this.superType)
+      return this.superType.cast(value);
     throw new DashError("cannot cast");
-  }
-  public from(type: DatumType, value: any): Value {
-    throw new DashError(`cannot convert ${type} to ${this.name}`);
   }
 
   public wrap(value: any): Value {

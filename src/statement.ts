@@ -296,7 +296,8 @@ implements Statement {
   }
 
   public apply(vm: Vm): void {
-    while (this.condition.evaluate(vm).data !== 0)
+    while (this.condition.evaluate(vm).data !== 0) {
       this.block.apply(vm);
+    }
   }
 }

@@ -1,3 +1,4 @@
+import { DashError } from "./error.js";
 
 export enum DatumType {
   Int8 = 1 << 0,
@@ -21,12 +22,13 @@ export enum DatumType {
 }
 
 export interface DatumTypeCastMapping {
-  [DatumType.Float32]: [DatumType.Float64, DatumType.Int8, DatumType.Int16, DatumType.Int32, DatumType.Int64],
-  [DatumType.Float64]: [DatumType.Float32, DatumType.Int8, DatumType.Int16, DatumType.Int32, DatumType.Int64],
-  [DatumType.Int8]: [DatumType.Float32, DatumType.Float64, DatumType.Int16, DatumType.Int32, DatumType.Int64],
-  [DatumType.Int16]: [DatumType.Float32, DatumType.Float64, DatumType.Int8, DatumType.Int32, DatumType.Int64],
-  [DatumType.Int32]: [DatumType.Float32, DatumType.Float64, DatumType.Int8, DatumType.Int16, DatumType.Int64],
-  [DatumType.Int64]: [DatumType.Float32, DatumType.Float64, DatumType.Int8, DatumType.Int32, DatumType.Int32]
+  [DatumType.Float]: [DatumType.Float32, DatumType.Float64];
+  [DatumType.Float32]: [DatumType.Float64, DatumType.Int8, DatumType.Int16, DatumType.Int32, DatumType.Int64];
+  [DatumType.Float64]: [DatumType.Float32, DatumType.Int8, DatumType.Int16, DatumType.Int32, DatumType.Int64];
+  [DatumType.Int8]: [DatumType.Float32, DatumType.Float64, DatumType.Int16, DatumType.Int32, DatumType.Int64];
+  [DatumType.Int16]: [DatumType.Float32, DatumType.Float64, DatumType.Int8, DatumType.Int32, DatumType.Int64];
+  [DatumType.Int32]: [DatumType.Float32, DatumType.Float64, DatumType.Int8, DatumType.Int16, DatumType.Int64];
+  [DatumType.Int64]: [DatumType.Float32, DatumType.Float64, DatumType.Int8, DatumType.Int32, DatumType.Int32];
 }
 
 export const typeToNameMap = {
@@ -41,6 +43,7 @@ export const typeToNameMap = {
   [DatumType.Function]: "func",
   [DatumType.String]: "str",
   [DatumType.Number]: "num",
+  [DatumType.Object]: "obj",
   [DatumType.Type]: "type",
   [DatumType.Any]: "any"
 } as const;
@@ -58,7 +61,37 @@ export const nameToTypeMap = {
   "str": DatumType.String,
   "num": DatumType.Number,
   "type": DatumType.Type,
-  "object": DatumType.Object,
+  "obj": DatumType.Object,
   "array": DatumType.Array,
   "any": DatumType.Any
 } as const;
+
+export function parseBinLiteral(str: string): number {
+  if (! /(0b)?[01]+/.test(str))
+    throw new DashError("bad format");
+  if (str.startsWith("0b"))
+    str = str.substring(2);
+  return Number.parseInt(str, 2);
+}
+
+export function parseDecLiteral(str: string): number {
+  if (! /[0-9]+/.test(str))
+    throw new DashError("bad format");
+  return Number.parseInt(str, 10);
+}
+
+export function parseHexLiteral(str: string): number {
+  if (! /(0x)?[a-fA-F0-9]+/.test(str))
+    throw new DashError("bad format");
+  if (str.startsWith("0x"))
+    str = str.substring(2);
+  return Number.parseInt(str, 16);
+}
+
+export function parseOctLiteral(str: string): number {
+  if (! /(0o)?[0-7]+/.test(str))
+    throw new DashError("bad format");
+  if (str.startsWith("0o"))
+    str = str.substring(2);
+  return Number.parseInt(str, 8);
+}

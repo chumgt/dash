@@ -1,6 +1,5 @@
 import { DatumType } from "./data.js";
 import { BinaryOpKind, Expression, ExpressionKind, IdentifierExpression, TypeExpression } from "./expression.js";
-import { Type } from "./type.js";
 
 export interface TokenSource {
   text: string;

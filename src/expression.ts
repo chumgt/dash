@@ -1,6 +1,6 @@
 import { DatumType } from "./data.js";
 import { DashError } from "./error.js";
-import { AssignmentTarget, Literal, Node, NodeKind } from "./node.js";
+import { AssignmentTarget, Literal, Name, Node, NodeKind } from "./node.js";
 import { FunctionExprToken, LiteralToken, ParameterToken, TypeToken } from "./token.js";
 import { ValueType } from "./type.js";
 import { FnParameters } from "./function.js";
@@ -205,15 +205,15 @@ implements Expression {
       [DatumType.Type]: t_type
     } = vm.platform.getBaseTypes();
 
-    const type = this.target.evaluate(vm);
-    if (! t_type.isAssignable(type.type))
+    const typeV = this.target.evaluate(vm);
+    if (! t_type.isAssignable(typeV.type))
       throw new DashError("cast to non-type");
 
     const value = this.expr.evaluate(vm);
-    if (! value.type.isCastableTo(type.data))
-      throw new DashError(`cannot cast ${value.type.name} to ${type.data.name}`)
+    if (! value.type.isCastableTo(typeV.data))
+      throw new DashError(`cannot cast ${value.type.name} to ${typeV.data.name}`);
 
-    return new Value(type.data, value.data);
+    return (typeV.data as ValueType).cast(value);
   }
 }
 
@@ -297,16 +297,13 @@ implements Expression {
   }
 }
 
-export class IdentifierExpression extends Node
+export class IdentifierExpression extends Name
 implements Expression, AssignmentTarget {
-  value: string;
-
   public constructor(value: string) {
-    super(NodeKind.Expression);
-    this.value = value;
+    super(value);
   }
 
-  public get type() { return ExpressionKind.Block }
+  public get type() { return ExpressionKind.Identifier }
 
   public evaluate(vm: Vm): Value {
     return vm.get(this.value);
