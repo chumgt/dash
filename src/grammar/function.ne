@@ -2,18 +2,12 @@
 
 FunctionLiteral ->
   ("fn" | "⨍") _ "(" _ Parameters:? _ ")" _ TypeSignature:? _ FunctionBlock
-    {% (d) => new expr.FunctionExpression({
-      kind: expr.ExpressionKind.Function,
-      block: d[10],
-      params: d[4]??[],
-      returnType: d[8]
+    {% (d) => new expr.FunctionExpression(d[4]??[], d[10], {
+      "returnType": d[8]
     }) %}
-  | "⨍" Name _ "=>" _ ReturnExpr
-    {% (d) => new expr.FunctionExpression({
-      kind: expr.ExpressionKind.Function,
-      block: new expr.BlockExpression(new stmt.StatementBlock([]), d[5]),
-      params: [],
-      returnType: undefined
+  | "⨍" LambdaParameter TypeSignature:? _ FunctionBlock
+    {% (d) => new expr.FunctionExpression([d[1]], d[4], {
+      "returnType": d[2]
     }) %}
 
 FunctionDecl ->
@@ -37,18 +31,16 @@ Argument ->
   ReturnExpr
     {% id %}
 
+LambdaParameter ->
+  Name {% (d) => ({ name: d[0] }) %}
+
 Parameters ->
     Parameters _ "," _ Parameter {% (d) => [...d[0], d[4]] %}
   | Parameter  {% (d) => [d[0]] %}
 Parameter ->
-  ParameterSignature (_ "=" _ Expr):?
-    {% (d) => Object.assign({
-      "defaultValue": d[1]?.[3]
-    }, d[0]) %}
-
-ParameterSignature ->
-  Name (_ TypeSignature):?
-    {% (d) => ({
-      "name": d[0].value,
-      "typedef": d[1]?.[1]
+  Name _ TypeSignature:? (_ "=" _ Expr):?
+    {% (d) => tokenize<tokens.ParameterToken>({
+      "name": d[0],
+      "defaultValue": d[3]?.[3],
+      "type": d[2]
     }) %}

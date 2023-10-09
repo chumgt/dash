@@ -27,8 +27,24 @@ DeclarationStmt ->
   | StaticDeclarationStmt
     {% id %}
 
+CompoundAssignmentStmt ->
+    Ref _ "**=" _ Expr
+    {% d => new stmt.CompoundAssignmentStatement(d[0], d[4], expr.BinaryOpKind.Exponential) %}
+  | Ref _ "/=" _ Expr
+    {% d => new stmt.CompoundAssignmentStatement(d[0], d[4], expr.BinaryOpKind.Divide) %}
+  | Ref _ "*=" _ Expr
+    {% d => new stmt.CompoundAssignmentStatement(d[0], d[4], expr.BinaryOpKind.Multiply) %}
+  | Ref _ "+=" _ Expr
+    {% d => new stmt.CompoundAssignmentStatement(d[0], d[4], expr.BinaryOpKind.Add) %}
+  | Ref _ "-=" _ Expr
+    {% d => new stmt.CompoundAssignmentStatement(d[0], d[4], expr.BinaryOpKind.Subtract) %}
+  | Ref _ "..=" _ Expr
+    {% d => new stmt.CompoundAssignmentStatement(d[0], d[4], expr.BinaryOpKind.Concat) %}
+
 AssignmentStmt ->
-  Reference _ "=" _ Expr
+  Ref _ "=" _ Expr
     {% (d) => new stmt.AssignmentStatement(d[0], d[4]) %}
+  | CompoundAssignmentStmt
+    {% id %}
   | DeclarationStmt
     {% id %}

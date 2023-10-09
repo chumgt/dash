@@ -1,12 +1,10 @@
 import { DashError } from "./error.js";
-import { Expression, NameExpression } from "./expression.js";
+import { BinaryOpKind, Expression, ReferenceExpression } from "./expression.js";
 import { FnParameters } from "./function.js";
-import { AssignmentTarget, Block, Node, NodeKind } from "./node.js";
+import { Assignable, Block, Name, Node, NodeKind } from "./node.js";
 import { ParameterToken } from "./token.js";
-import { ValueType } from "./type.js";
 import { DashFunctionValue, FunctionValue, Value } from "./vm/value.js";
 import { Vm } from "./vm/vm.js";
-import * as types from "./vm/types.js";
 import { DatumType } from "./data.js";
 
 export enum StatementKind {
@@ -35,7 +33,7 @@ export interface DeclarationInfo {
 
 export interface FnDeclarationInfo {
   annotations?: Expression[];
-  returnType: Expression;
+  returnType?: Expression;
 }
 
 export interface Flow {
@@ -68,7 +66,6 @@ export class StatementBlock extends Block {
   }
 
   public apply(vm: Vm) {
-    const sub = vm.sub();
     for (let stmt of this.body) {
       const returned = stmt.apply(vm);
       if (returned)
@@ -80,7 +77,7 @@ export class StatementBlock extends Block {
 export class AssignmentStatement extends Node
 implements Assignment, Statement {
   public constructor(
-      public target: AssignmentTarget,
+      public target: ReferenceExpression,
       public valueExpr: Expression,
       public flags: number = 0) {
     super(NodeKind.Assignment);
@@ -91,7 +88,7 @@ implements Assignment, Statement {
   }
 
   public getKey(): string {
-    return this.target.getKey();
+    return this.target.name.getValue();
   }
 
   public getValue(vm: Vm): Value {
@@ -99,18 +96,48 @@ implements Assignment, Statement {
   }
 }
 
+export class CompoundAssignmentStatement extends Node
+implements Assignment, Statement {
+  public constructor(
+      public target: ReferenceExpression,
+      public rhs: Expression,
+      public op: BinaryOpKind) {
+    super(NodeKind.Assignment);
+  }
+
+  public apply(vm: Vm) {
+    vm.assign(this.getKey(), this.getValue(vm));
+  }
+
+  public getKey(): string {
+    return this.target.name.getValue();
+  }
+
+  public getValue(vm: Vm): Value {
+    const lhs = this.target.evaluate(vm);
+    const opFn = lhs.type.getOperator(this.op);
+    if (! opFn)
+      throw new DashError(`cannot do op ${this.op} on ${lhs.type.name}`);
+    const rhs = this.rhs.evaluate(vm);
+    return opFn(lhs, rhs, vm);
+  }
+}
+
 export class DeclarationStatement extends Node
 implements Declaration, Statement {
   public constructor(
-      public target: AssignmentTarget,
+      public target: Name,
       public valueExpr: Expression,
       public info: DeclarationInfo) {
     super(NodeKind.Declaration);
   }
 
   public apply(vm: Vm) {
+    const {
+      [DatumType.Any]: t_Any
+    } = vm.platform.getBaseTypes();
     let value = this.getValue(vm);
-    let type = types.ANY;
+    let type = t_Any;
 
     if (this.info.type) {
       const typeV = this.info.type.evaluate(vm);
@@ -122,22 +149,25 @@ implements Declaration, Statement {
       //   throw new TypeError(`cannot assign ${value.type.name} to ${type.name}`);
     }
 
-    const key = this.target.getKey();
-    vm.declare(key, {type});
+    const key = this.target.getValue();
+    vm.declare(key, {type:value.type});
     vm.assign(key, value);
   }
 
   public getKey(): string {
-    return this.target.getKey();
+    return this.target.getValue();
   }
 
   public getValue(vm: Vm): Value {
+    const {
+      [DatumType.Function]: t_Function
+    } = vm.platform.getBaseTypes();
     let value = this.valueExpr.evaluate(vm);
 
     if (this.info.annotations) {
       for (let anno of this.info.annotations) {
         const func = anno.evaluate(vm);
-        if (! types.FUNCTION.isAssignable(func.type))
+        if (! t_Function.isAssignable(func.type))
           throw new DashError("annotation must be a fn");
         value = (func as FunctionValue).call(vm, [value]);
       }
@@ -150,7 +180,7 @@ implements Declaration, Statement {
 export class FunctionDeclaration extends Node
 implements Declaration, Statement {
   public constructor(
-      public identifier: NameExpression,
+      public name: Name,
       public params: ParameterToken[],
       public body: Expression,
       public info: FnDeclarationInfo) {
@@ -162,22 +192,29 @@ implements Declaration, Statement {
   }
 
   protected getParameters(vm: Vm): FnParameters {
+    const {
+      [DatumType.Any]: t_Any,
+      [DatumType.Type]: t_Type
+    } = vm.platform.getBaseTypes();
+
     const params: FnParameters = [];
     for (let param of this.params) {
-      if (param.typedef) {
-        const res = param.typedef.evaluate(vm);
-        if (! types.TYPE.isAssignable(res.type))
+      const paramName = param.name.value;
+
+      if (param.type) {
+        const res = param.type.evaluate(vm);
+        if (! t_Type.isAssignable(res.type))
           throw new DashError(`${param.name} is not typedef'd to a type`);
         params.push({
-          name: param.name,
+          name: param.name.value,
           required: param.defaultValue === undefined,
           type: res.data
         });
       } else {
         params.push({
-          name: param.name,
+          name: param.name.value,
           required: param.defaultValue === undefined,
-          type: types.ANY
+          type: t_Any
         });
       }
     }
@@ -186,17 +223,20 @@ implements Declaration, Statement {
   }
 
   public getKey(): string {
-    return this.identifier.getKey();
+    return this.name.getValue();
   }
 
   public getValue(vm: Vm): FunctionValue {
+    const {
+      [DatumType.Function]: t_Function
+    } = vm.platform.getBaseTypes();
     let value: FunctionValue = new DashFunctionValue(
         this.getParameters(vm), this.body, vm);
 
     if (this.info.annotations) {
       for (let anno of this.info.annotations) {
         const func = anno.evaluate(vm);
-        if (! types.FUNCTION.isAssignable(func.type))
+        if (! t_Function.isAssignable(func.type))
           throw new DashError("annotation must be a fn");
         value = <any> (func as FunctionValue).call(vm, [value]);
       }
@@ -222,7 +262,7 @@ implements Statement {
 export class ForInStatement extends Node
 implements Statement {
   public constructor(
-      public identifier: NameExpression,
+      public identifier: Name,
       public iterExpr: Expression,
       public block: StatementBlock) {
     super(NodeKind.ForIn);
@@ -235,14 +275,15 @@ implements Statement {
   }
 
   protected iterate(iterator: Value, vm: Vm) {
-    // if (! types.isIteratorObject(iterator, {vm}))
-    //   throw new DashError("not an iterator");
+    const {
+      [DatumType.Any]: t_Any
+    } = vm.platform.getBaseTypes();
 
     const isDoneFn = iterator.data.done as FunctionValue;
     const nextFn = iterator.data.next as FunctionValue;
-    const key = this.identifier.getKey();
+    const key = this.identifier.getValue();
     const sub = vm.sub();
-    sub.declare(key, {type: types.ANY});
+    sub.declare(key, {type: t_Any});
     while (isDoneFn.call(vm, []).data === 0) {
       const value = nextFn.call(vm, []);
       sub.assign(key, value);

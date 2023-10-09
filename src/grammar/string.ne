@@ -1,7 +1,19 @@
+@{%
+  function quote(str: string): string {
+    return `"${str}"`;
+  }
+  function str(x: string): string {
+    return JSON.parse(quote(x.replace("\n", "\\n")));
+  }
+%}
+
 @lexer lexer
 
-IString -> "$" istr
+IString -> "i" istr
   {% d => new expr.InterpolatedStringExpression(d[1]) %}
+
+IStringInterpolation ->
+  "{" Expr "}" {% d => d[1] %}
 
 StringLiteral ->
   strliteral {% (d) => new expr.LiteralExpression({
@@ -9,20 +21,22 @@ StringLiteral ->
     "value": d[0]
   }) %}
 
-StringInterpolation ->
-  "$" "{" Expr "}" {% d => d[2] %}
-
 istr -> "\"" istrpart:* "\"" {% d => d[1] %}
 
-istrpart -> StringInterpolation {% d => d[0] %}
-  | istrchar:+  {% d => d[0].join("") %}
+istrpart ->
+  IStringInterpolation {% d => d[0] %}
+  | istrchar:+         {% d => str(d[0].join("")) %}
 istrchar ->
-  "\\" istrescape {% d => JSON.parse("\""+d.join("")+"\"") %}
-  | [^\\"$]       {% id %}
-istrescape -> %istrescape  {% id %}
+  "\\" "{"          {% d => "{" %}
+  | "\\" istrescape {% d => d.join("") %}
+  | [^\\"\{]        {% id %}
+istrescape ->
+  strescape  {% id %}
 
-strliteral -> "\"" strchar:* "\"" {% d => d[1].join("") %}
+strliteral ->
+  "\"" strchar:* "\"" {% d => str(d[1].join("")) %}
 strchar ->
-  "\\" strescape {% d => JSON.parse("\""+d.join("")+"\"") %}
+  "\\" strescape {% d => d.join("") %}
   | [^\\"]       {% id %}
-strescape -> %strescape {% id %}
+strescape ->
+  [bnrt\\] {% id %}

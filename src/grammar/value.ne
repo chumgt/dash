@@ -2,11 +2,11 @@
 @include "./number.ne"
 @include "./string.ne"
 
-Array ->
+ArrayLiteral ->
   "[" _ ArrayElements:? _ "]"
     {% (d) => new expr.ArrayExpression(d[2]??[]) %}
 
-Object ->
+ObjectLiteral ->
   "#" "{" _ ObjectProperties:? _ "}"
     {% (d) => new expr.ObjectExpression(d[3]??[]) %}
 
@@ -19,7 +19,7 @@ ArrayEl ->
 
 ObjectProperties ->
   ObjectProperty _ ";" _ ObjectProperties {% (d) => [d[0], ...d[4]] %}
-  | ObjectProperty EOL:? {% (d) => [d[0]] %}
+  | ObjectProperty DELIM:? {% (d) => [d[0]] %}
 
 ObjectProperty ->
   DeclarationStmt

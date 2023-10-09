@@ -22,7 +22,7 @@ export enum NodeKind {
   While
 }
 
-export interface AssignmentTarget {
+export interface Assignable {
   assign(value: Value, vm: Vm): void;
   getKey(): string;
 }
@@ -34,6 +34,10 @@ export interface DereferenceTarget {
 export interface Exportable {
   getExportName(): string;
   getExportValue(): Value;
+}
+
+export interface ObjectKey {
+  getKey(): string;
 }
 
 export interface Resolvable<T> {
@@ -80,5 +84,9 @@ export class Literal extends Node {
 export class Name extends Node {
   public constructor(public value: string) {
     super(NodeKind.Name);
+  }
+
+  public getValue(): string {
+    return this.value;
   }
 }

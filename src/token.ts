@@ -1,5 +1,6 @@
 import { DatumType } from "./data.js";
-import { BinaryOpKind, Expression, ExpressionKind, NameExpression, TypeExpression } from "./expression.js";
+import { BinaryOpKind, Expression, ExpressionKind, ReferenceExpression, TypeExpression } from "./expression.js";
+import { Name } from "./node.js";
 
 export interface TokenSource {
   text: string;
@@ -32,7 +33,7 @@ export interface BinaryOpToken extends ExpressionToken {
 }
 
 export interface FunctionDeclToken extends StatementToken {
-  identifier: NameExpression;
+  identifier: Name;
   block: Expression;
   params: ParameterToken[];
   returnType: ExpressionToken;
@@ -44,9 +45,13 @@ export interface FunctionExprToken extends ExpressionToken {
   returnType?: ExpressionToken;
 }
 
+export interface NameToken extends Token {
+  value: string;
+}
+
 export interface ParameterToken extends Token {
-  name: string;
-  typedef?: NameExpression;
+  name: NameToken;
+  type?: ReferenceExpression | TypeExpression;
   defaultValue?: Expression;
 }
 
@@ -56,8 +61,9 @@ export interface SwitchBlockToken extends Token {
 }
 
 export interface TypeToken extends Token {
-  records: [NameExpression, NameExpression | TypeExpression][];
+  records: [Name, ReferenceExpression | TypeExpression][];
 }
+
 
 export interface UnaryOpToken extends ExpressionToken {
   rhs: ExpressionToken;
@@ -66,6 +72,7 @@ export interface UnaryOpToken extends ExpressionToken {
 /// Literal values.
 export interface LiteralToken extends Token {
   type: DatumType;
+  text?: string;
   value: any;
 }
 

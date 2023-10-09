@@ -1,6 +1,6 @@
 import { DashError } from "../error.js";
 import { Expression } from "../expression.js";
-import { FnParameters } from "../function.js";
+import { FnArguments, FnParameters, assignableParams } from "../function.js";
 import { ValueType } from "../type.js";
 import { Vm } from "./vm.js";
 import { DatumType } from "../data.js";
@@ -38,11 +38,6 @@ export abstract class FunctionValue extends Value {
   public abstract apply(vm: Vm, args: Value[]): Value;
   public abstract call(vm: Vm, args: Value[]): Value;
 
-  public callExpr(vm: Vm, args: Expression[]): Value {
-    const values = args.map(x => x.evaluate(vm));
-    return this.call(vm, values);
-  }
-
   public mapArgsToParams(vm: Vm, args: Value[]): Record<string, Value> {
     if (! this.params) {
       return {};
@@ -53,16 +48,22 @@ export abstract class FunctionValue extends Value {
 
     const values: Record<string, Value> = {};
     for (let i = 0; i < args.length; i++) {
-      const arg = args[i];
-      const param = this.params[i];
+      const param = this.params[i],
+            arg = args[i];
 
       if (! param.type.isAssignable(arg.type))
         throw new DashError(`arg ${i} expected ${param.type} got ${arg.type.name}`);
-
       values[param.name] = arg;
     }
 
     return values;
+  }
+
+  public isCallableWithArgs(args: FnArguments): boolean {
+    if (! this.params)
+      return true;
+
+    return assignableParams(args, this.params);
   }
 }
 
@@ -74,11 +75,10 @@ export class DashFunctionValue extends FunctionValue {
   }
 
   public apply(vm: Vm, args: Value[]): Value {
-    const t_any = vm.platform.getBaseType(DatumType.Any);
     const argMap = this.mapArgsToParams(vm, args);
 
     for (const [key, value] of Object.entries(argMap)) {
-      vm.declare(key, {type: t_any});
+      vm.declare(key, {type: value.type});
       vm.assign(key, value);
     }
 
@@ -102,15 +102,9 @@ export class NativeFunctionValue extends FunctionValue {
   }
 
   public override call(vm: Vm, args: Value[]): Value {
-    return this.apply(vm, args);
+    return this.apply(vm.sub(), args);
   }
 }
-
-// export class DashIteratorValue extends Value {
-//   public constructor() {
-//     super(types.OBJECT, )
-//   }
-// }
 
 //#region funcs
 export function newArray(vm: Vm, values: Value[]): Value {
@@ -118,6 +112,7 @@ export function newArray(vm: Vm, values: Value[]): Value {
     [DatumType.Array]: t_Array,
     [DatumType.Boolean]: t_Boolean,
     [DatumType.Int32]: t_Int32,
+    [DatumType.Integer]: t_Int,
     [DatumType.String]: t_String
   } = vm.platform.getBaseTypes();
 
@@ -127,7 +122,7 @@ export function newArray(vm: Vm, values: Value[]): Value {
       newArray(vm, [...self.data, ...args])
     ),
     at: wrapFunction((args) => {
-      if (! t_Int32.isAssignable(args[0].type))
+      if (! t_Int.isAssignable(args[0].type))
         throw new DashError("array index must be an int");
 
       const index = args[0].data;

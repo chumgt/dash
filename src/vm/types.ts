@@ -13,21 +13,28 @@ export const ANY = new ValueType(undefined, {name: "any"});
 ANY.isAssignable = (type) => true;
 ANY.isImplicitCastableTo = (type) => true;
 ANY.isCastableTo = (type) => true;
-ANY.stringify = (value) => String(value.data);
 
 export const TYPE = new ValueType(ANY, {name: "type"});
 TYPE.isAssignable = (type) => true;
-TYPE.cast = function (this: ValueType, value) {
-  return new Value(this, value.data)
-};
 TYPE.isCastableTo = (type) => true;
+TYPE.cast = function (this: ValueType, value) {
+  return new Value(this, value.data);
+};
+TYPE.stringify = (value) => value.data.name;
 
 export const ERROR = new ValueType(TYPE, {name: "error"});
-export const JSTYPE = new ValueType(TYPE, {name: "<jstype>"});
 
 export const OBJECT = new ValueType(TYPE, {name: "obj"});
-OBJECT.operators[BinaryOpKind.Dereference] = (a, b) => {
+OBJECT.operators[BinaryOpKind.Dereference] = (a, b, vm) => {
   return a.properties?.[b.data] ?? a.data[b.data];
+};
+OBJECT.stringify = function(this: ValueType, value: Value, ctx) {
+  if (value.data.stringify && FUNCTION.isAssignable(value.data.stringify.type)) {
+    const toStringFn = value.data.stringify as FunctionValue;
+    const result = toStringFn.call(ctx.vm, []);
+    return result.data;
+  }
+  throw new DashError(`${this.name} missing stringify function`);
 };
 OBJECT.isIterable = (value) => {
   return FUNCTION.isAssignable(value.data.done.type)
@@ -57,9 +64,9 @@ ARRAY.operators[BinaryOpKind.Dereference] = (a, b) => {
 ARRAY.isIterable = (value) => true;
 ARRAY.getIterator = (ctx, value) => newArrayIterator(value);
 
-// export const ITERATOR = new ValueType(OBJECT, {name: "iterator"});
+export const DATUM = new ValueType(TYPE);
+DATUM.stringify = (value) => String(value.data);
 
-export const DATUM = new ValueType(undefined, TYPE);
 export const NUMBER = new ValueType(DATUM, {name: "number"});
 NUMBER.operators[BinaryOpKind.Add] = (a, b) => new Value(a.type, a.data + b.data);
 NUMBER.operators[BinaryOpKind.Divide] = (a, b) => new Value(a.type, a.data / b.data);
@@ -82,7 +89,15 @@ NUMBER.cast = function (value) {
     throw new DashError("ambiguous number type");
   return new Value(NUMBER, value.data)
 };
-NUMBER.stringify = (value) => String(value.data);
+NUMBER.from = function (value) {
+  switch (typeof value) {
+    case "number": return new Value(NUMBER, value);
+    case "string": return new Value(NUMBER, Number(value));
+  }
+  if (value instanceof Value)
+    return NUMBER.from(value.data);
+  throw new DashError(`cannot get number from ${value}`);
+};
 NUMBER.wrap = function (value) {
   if (typeof value !== "number")
     throw new DashError(`expected number, received ${typeof value}`);
@@ -94,12 +109,12 @@ NUMBER.isAssignable = function (type) {
 NUMBER.isImplicitCastableTo = (type) =>
     NUMBER.isAssignable(type);
 
-export const INT = new ValueType(NUMBER);
+export const INT = new ValueType(NUMBER, {name: "int"});
 INT.operators[BinaryOpKind.Concat] = (a, b, vm) => {
   if (b.type.isTypeOf(INT)) {
     const [start, stop] = [a.data, b.data] as number[];
     if (! (Number.isInteger(start) && Number.isInteger(stop)))
-      throw new DashError("range only possible with integers");
+      throw new DashError(`range only possible with integers, got ${typeof start} and ${typeof stop}`);
 
     const values: Value[] = [ ];
     for (let i = start; (start<stop)?(i<=stop):(i>=stop); i+=Math.sign(stop-start))
@@ -117,7 +132,7 @@ INT.isAssignable = function (this: ValueType, type) {
   return type.isTypeOf(INT);
 };
 
-export const FLOAT = new ValueType(NUMBER);
+export const FLOAT = new ValueType(NUMBER, {name: "float"});
 export const FUNCTION = new ValueType(TYPE, {name: "func"});
 FUNCTION.wrap = function (value) {
   if (typeof value !== "function")
@@ -163,15 +178,24 @@ STRING.operators[BinaryOpKind.Dereference] = (a, b) => {
       throw new DashError(`property ${b.data} does not exist on string`);
   }
 };
+STRING.from = function (value) {
+  switch (typeof value) {
+    case "number": return new Value(STRING, String(value));
+    case "string": return new Value(STRING, value);
+  }
+  if (value instanceof Value)
+    return STRING.from(value.data);
+  throw new DashError(`cannot get string from ${value}`);
+}
 STRING.stringify = (value) => value.data;
 STRING.isIterable = (value) => true;
 STRING.getIterator = (ctx, value) => {
   let i = 0;
   return new Value(OBJECT, {
-    done: wrapFunction(() => new Value(INT32, i < value.data.length ? 0 : 1)),
-    next: wrapFunction(() => {
-      return new Value(STRING, value.data[i++]);
-    })
+    done: wrapFunction(() =>
+      new Value(INT32, i < value.data.length ? 0 : 1)),
+    next: wrapFunction(() =>
+      new Value(STRING, value.data[i++]))
   });
 };
 

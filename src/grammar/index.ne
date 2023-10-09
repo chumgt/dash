@@ -4,6 +4,7 @@
   import * as expr from "../expression.js";
   import * as node from "../node.js";
   import * as stmt from "../statement.js";
+  import * as tokens from "../token.js";
   import { DashParseError } from "../parse.js";
 
   /** Returns a Nearley postprocessor which returns
@@ -30,27 +31,25 @@
     return expr;
   }
 
+  export function tokenize<T extends tokens.Token>(obj: T): T {
+    return obj;
+  }
+
   // Some tokens have `as any` because Nearley-to-Typescript doesn't like it otherwise.
   const lexer = moo.compile({
-    // base: ["0b", "0o", "0x"],
     binliteral: /0b[01]+/,
     hexliteral: /0x[a-fA-F0-9]+/,
     octliteral: /0o[0-7]+/,
     decliteral: /0|[1-9][0-9]*/,
     strescape: /\\|\{|u[0-9]{4}/,
-    istrescape: /\\|\$|\{|u[0-9]{4}/,
 
     decl: ["::", ":="],
+    assign: ["**=", "/=", "*=", "+=", "-=", "..="],
     math: ["÷", "×", "π", "∞", "⨍", "⌈", "⌉", "⌊", "⌋", "²", "³", "√"],
-    op: ["==", "!=", ">=", ">", "<=", "<", "..", "&&", "||"],
+    op: ["==", "!=", ">=", ">", "<=", "<", "..", "&&", "||", "**", "/", "*", "+", "-"],
 
     fnarrow: "=>",
 
-    pow: "**",
-    div: "/",
-    mul: "*",
-    add: "+",
-    sub: "-",
     dot: ".",
     semi: ";",
     colon: ":",
@@ -72,19 +71,6 @@
     under: "_",
     dquote: "\"",
     bslash: "\\",
-    // "base2": "0b",
-    // "base8": "0o",
-    // "base16": "0x",
-
-    // comment: {
-    //   match: /#[^\n]*/,
-    //   value: (s) => s.substring(1)
-    // },
-    //string: {
-    //  match: /"(?:\\["bfnrt\/\\]|\\u[a-fA-F0-9]{4}|[^"])*"/,
-    //  lineBreaks: true,
-    //  value: (x) => JSON.parse(x.replace("\n", "\\n"))
-    //},
 
     name: {
       match: /[a-zA-Z_][a-zA-Z0-9_]*/,
@@ -109,14 +95,7 @@
     ws: {
       match: /[ \t\n\v\f]+/,
       lineBreaks: true
-    },
-
-    //number: /[0-9]/,
-    //hexdigit: /[a-fA-F0-9]/,
-    //decdigit: /[0-9]/,
-    //octdigit: /[0-7]/,
-    //bindigit: /[01]/,
-    //alphanum: /[a-zA-Z0-9]+/
+    }
   });
 %}
 
@@ -138,16 +117,15 @@ Chunk ->
     {% nth(1) %}
 
 DELIM -> _ ";":+
-EOL -> _ TERM:+
-TERM -> "\n" | ";"
+EOL  -> _ "\n":+
 
 ExprBlock ->
-  "{" _ Statements:? _ ReturnExpr _ "}"
-    {% (d) => new expr.BlockExpression(
-        new stmt.StatementBlock(d[2]??[]), d[4]) %}
-  | "{" _ Statements:? _ ReturnStmt EOL:? _ "}"
+  "{" _ Statements:? _ ReturnStmt DELIM:? _ "}"
     {% (d) => new expr.BlockExpression(
         new stmt.StatementBlock(d[2]??[]), d[4].expr) %}
+  | "{" _ Statements:? _ ExprBlock _ "}"
+    {% (d) => new expr.BlockExpression(
+        new stmt.StatementBlock(d[2]??[]), d[4]) %}
   | ReturnExpr
     {% (d) => new expr.BlockExpression(
         new stmt.StatementBlock([]), d[0]) %}
@@ -155,9 +133,9 @@ ExprBlock ->
 StmtBlock ->
   "{" _ Statements:? _ "}"
     {% (d) => new stmt.StatementBlock(d[2] ?? []) %}
-  | Stmt _ ";"
+  | Stmt _ DELIM
     {% (d) => new stmt.StatementBlock([d[0]]) %}
-  | ";"
+  | DELIM
     {% (d) => new stmt.StatementBlock([]) %}
 
 Statements ->
@@ -270,30 +248,25 @@ Call ->
     {% (d) => new expr.CallExpression(d[0], d[4]??[]) %}
 
 Primary ->
-    Index  {% id %}
-  | Call {% id %}
-  | Atom {% id %}
-
-Reference ->
     Index {% id %}
-  | Name  {% id %}
+  | Call  {% id %}
+  | Atom  {% id %}
 
 Atom ->
   "(" _ ReturnExpr _ ")" {% nth(2) %}
   | IString         {% id %}
-  | Array           {% id %}
-  | Object          {% id %}
-  | StringLiteral   {% id %}
+  | ArrayLiteral    {% id %}
+  | ObjectLiteral   {% id %}
   | BooleanLiteral  {% id %}
   | NumberLiteral   {% id %}
-  | Name            {% id %}
+  | StringLiteral   {% id %}
   | TypeLiteral     {% id %}
+  | Ref             {% id %}
 
 TypeSignature ->
-  ":" _ Name
+  ":" _ Ref
     {% (d) => d[2] %}
 
-Name ->
-  %name  {%
-    (d) => new expr.NameExpression(new node.Name(d[0].value))
-  %}
+Ref -> Name {% d => new expr.ReferenceExpression(d[0]) %}
+Name -> [a-zA-Z_] [a-zA-Z0-9_]:*
+    {% d => new node.Name(d[0] + d[1].join("")) %}

@@ -40,14 +40,20 @@ export interface Domain {
   isCastable(type: Type): boolean;
 }
 
+export interface Trait { }
+
 export interface JSType<T> {
   wrap(value: T): Value;
 }
 
 export class Type {
+  public traits: Trait[];
+
   public constructor(
       public readonly superType?: ValueType,
-      public readonly header?: Readonly<TypeHeader>) {}
+      public readonly header?: Readonly<TypeHeader>) {
+    this.traits = [ ];
+  }
 
   public get name(): string {
     return this.header?.name ?? this.constructor.name;
@@ -74,8 +80,10 @@ export class Type {
     return false;
   }
 
-  public stringify(value: Value): string {
-    return this.superType?.stringify(value) ?? value.toString();
+  public stringify(value: Value, ctx: NativeFunctionContext): string {
+    if (this.superType)
+      return this.superType.stringify(value, ctx);
+    throw new DashError(`cannot convert ${this.name} to string`)
   }
 
   /**
@@ -162,6 +170,12 @@ export class ValueType extends Type {
     if (this.superType)
       return this.superType.cast(value);
     throw new DashError("cannot cast");
+  }
+
+  public from(value: any): Value | never {
+    if (this.superType)
+      return this.superType.from(value);
+    throw new DashError(`cannot get ${this.name} from ${value}`);
   }
 
   public wrap(value: any): Value {

@@ -1,12 +1,12 @@
 import { DatumType } from "./data.js";
 import { DashError } from "./error.js";
-import { AssignmentTarget, Literal, Name, Node, NodeKind, Visitor } from "./node.js";
-import { FunctionExprToken, LiteralToken, ParameterToken, TypeToken } from "./token.js";
+import { Literal, Name, Node, NodeKind } from "./node.js";
+import { LiteralToken, ParameterToken, TypeToken } from "./token.js";
 import { ValueType } from "./type.js";
 import { FnParameters } from "./function.js";
 import { DashFunctionValue, FunctionValue, Value, newArray } from "./vm/value.js";
 import { Vm } from "./vm/vm.js";
-import { Declaration, StatementBlock } from "./statement.js";
+import { Declaration, FnDeclarationInfo, StatementBlock } from "./statement.js";
 
 export enum ExpressionKind {
   /* TODO: These are strings for development as it makes it easier to read the
@@ -56,7 +56,7 @@ export enum ExpressionKind {
   UnaryOp = "UnaryOp"
 }
 
-export const enum BinaryOpKind {
+export enum BinaryOpKind {
   Assign,
   Concat,
   Dereference,
@@ -76,7 +76,7 @@ export const enum BinaryOpKind {
   Or
 }
 
-export const enum UnaryOpKind {
+export enum UnaryOpKind {
   Negate = 16,
   Not
 }
@@ -86,7 +86,11 @@ export enum ValueKind {
   String
 }
 
+/**
+ * A type that can be included in an array.
+ */
 export interface ArrayElement {
+  /** Get the value(s) to place in the array. */
   getArrayElements(vm: Vm): Value[];
 }
 
@@ -103,6 +107,9 @@ implements Expression, ArrayElement {
   //   super()
   // }
   public abstract evaluate(vm: Vm): Value;
+  // public getValue(vm: Vm): Value {
+  //   return this.evaluate(vm);
+  // }
 
   public getArrayElements(vm: Vm): Value[] {
     return [this.evaluate(vm)];
@@ -120,12 +127,13 @@ implements Expression {
   public get type() { return ExpressionKind.Block }
 
   public evaluate(vm: Vm): Value {
-    const returnValue = this.block.apply(vm);
+    const sub = vm.sub();
+    const returnValue = this.block.apply(sub);
     if (returnValue)
       return returnValue;
 
     if (this.returnExpr)
-      return this.returnExpr.evaluate(vm);
+      return this.returnExpr.evaluate(sub);
 
     throw new DashError("block did not return anything");
   }
@@ -204,7 +212,8 @@ implements Expression {
       throw new DashError("target is not callable");
 
     const fn = target as FunctionValue;
-    return fn.callExpr(vm, this.args);
+    const args = this.args.map(x => x.evaluate(vm));
+    return fn.call(vm, args);
   }
 }
 
@@ -235,12 +244,12 @@ implements Expression {
   }
 }
 
-export class DereferenceExpression extends BinaryOpExpression
-implements AssignmentTarget {
-  declare rhs: NameExpression;
+export class DereferenceExpression extends BinaryOpExpression {
+  public rrhs: Name;
 
-  public constructor(lhs: Expression, rhs: NameExpression) {
-    super(BinaryOpKind.Dereference, lhs, rhs);
+  public constructor(lhs: Expression, rhs: Name) {
+    super(BinaryOpKind.Dereference, lhs, undefined as any);
+    this.rrhs = rhs;
   }
 
   public override get type() { return ExpressionKind.Block }
@@ -252,7 +261,7 @@ implements AssignmentTarget {
       throw new DashError(`type ${lhs.type.name} is not dereferencable`);
 
     const t_String = vm.platform.getBaseType(DatumType.String);
-    return op(lhs, new Value(t_String, this.rhs.getKey()), vm);
+    return op(lhs, new Value(t_String, this.rrhs.getValue()), vm);
   }
 
   public assign(value: Value, vm: Vm): void {
@@ -262,52 +271,48 @@ implements AssignmentTarget {
       throw new DashError(`type ${lhs.type.name} is not assignable`);
     op(lhs, value, vm);
   }
-
-  public getKey() {
-    return this.rhs.getKey();
-  }
 }
 
 export class FunctionExpression extends ValueExpression
 implements Expression {
-  block: Expression;
-  params: ParameterToken[];
-
-  public constructor(token: FunctionExprToken) {
+  public constructor(
+      public params: ParameterToken[],
+      public body: Expression,
+      public info: FnDeclarationInfo) {
     super(NodeKind.Expression);
-    this.block = token.block;
-    this.params = token.params;
   }
 
   public get type() { return ExpressionKind.Block }
 
   public evaluate(vm: Vm): Value {
-    const val = new DashFunctionValue(this.getParameters(vm), this.block, vm);
+    const val = new DashFunctionValue(
+        this.getParameters(vm), this.body, vm);
     return val;
   }
 
   protected getParameters(vm: Vm): FnParameters {
     const {
       [DatumType.Any]: t_any,
-      [DatumType.Type]: t_type
+      [DatumType.Type]: t_type,
+      [DatumType.Int64]: t_i64
     } = vm.platform.getBaseTypes();
 
     const params: FnParameters = [];
     for (let param of this.params) {
-      if (param.typedef) {
-        const res = param.typedef.evaluate(vm);
+      if (param.type) {
+        const res = param.type.evaluate(vm);
         if (! t_type.isAssignable(res.type))
           throw new DashError(`${param.name} is not typedef'd to a type`);
         params.push({
-          name: param.name,
+          name: param.name.value,
           required: param.defaultValue === undefined,
           type: res.data
         });
       } else {
         params.push({
-          name: param.name,
+          name: param.name.value,
           required: param.defaultValue === undefined,
-          type: t_any
+          type: t_i64
         });
       }
     }
@@ -315,28 +320,8 @@ implements Expression {
   }
 }
 
-export class NameExpression extends ValueExpression
-implements Expression, AssignmentTarget {
-  public constructor(public name: Name) {
-    super(NodeKind.Name);
-  }
-
-  public get type() { return ExpressionKind.Identifier }
-
-  public evaluate(vm: Vm): Value {
-    return vm.get(this.getKey());
-  }
-
-  public assign(value: Value, vm: Vm): void {
-    vm.assign(this.getKey(), value);
-  }
-
-  public getKey() {
-    return this.name.value;
-  }
-}
-
-export class IfExpression extends ValueExpression implements Expression {
+export class IfExpression extends ValueExpression
+implements Expression {
   public constructor(
       public condition: Expression,
       public tResult: Expression,
@@ -357,7 +342,7 @@ export class IfExpression extends ValueExpression implements Expression {
 export class ForMapExpression extends Node
 implements Expression, ArrayElement {
   public constructor(
-      public identifier: NameExpression,
+      public identifier: Name,
       public iterExpr: Expression,
       public expr: BlockExpression) {
     super(NodeKind.Expression);
@@ -375,7 +360,7 @@ implements Expression, ArrayElement {
     const t_any = vm.platform.getBaseType(DatumType.Any);
 
     const values: Value[] = [ ];
-    const key = this.identifier.getKey();
+    const key = this.identifier.getValue();
     const isDoneFn = iterator.data.done as FunctionValue;
     const nextFn = iterator.data.next as FunctionValue;
     const sub = vm.sub();
@@ -394,7 +379,8 @@ implements Expression, ArrayElement {
   }
 }
 
-export class SwitchExpression extends ValueExpression implements Expression {
+export class SwitchExpression extends ValueExpression
+implements Expression {
   public constructor(
       public test: Expression | undefined,
       public patterns: [Expression, Expression][],
@@ -430,7 +416,8 @@ export class SwitchExpression extends ValueExpression implements Expression {
   }
 }
 
-export class TypeExpression extends ValueExpression implements Expression {
+export class TypeExpression extends ValueExpression
+implements Expression {
   public constructor(protected token: TypeToken) {
     super(NodeKind.Expression);
   }
@@ -442,7 +429,7 @@ export class TypeExpression extends ValueExpression implements Expression {
 
     const t = new ValueType(t_type);
     for (let [recordK, recordV] of this.token.records) {
-      const fieldK = recordK.getKey();
+      const fieldK = recordK.getValue();
       const fieldT = recordV.evaluate(vm);
       if (! t_type.isAssignable(fieldT.type))
         throw new DashError(`record ${fieldK} not typed`);
@@ -465,7 +452,26 @@ implements Expression, Literal {
   public get type() { return ExpressionKind.Value }
 
   public evaluate(vm: Vm): Value {
-    return vm.platform.newDatumValue(this.token.type, this.token.value);
+    const t_t = vm.platform.getBaseType(this.token.type);
+    return new Value(t_t, this.token.value);
+    // if (this.token.value) {
+    //   return new Value(t_t, this.token.value);
+    // } else {
+    //   return t_t.from(this.token.text);
+    // }
+  }
+}
+
+export class ReferenceExpression extends ValueExpression
+implements Expression {
+  public constructor(public name: Name) {
+    super(NodeKind.Name);
+  }
+
+  public get type() { return ExpressionKind.Identifier }
+
+  public override evaluate(vm: Vm): Value {
+    return vm.get(this.name.getValue());
   }
 }
 
@@ -480,13 +486,8 @@ implements Expression {
   public evaluate(vm: Vm): Value {
     const values: Value[] = [ ];
     for (let expr of this.content) {
-      // const result = expr.evaluate(vm);
-      // if (expr.type === ExpressionKind.For) {
-      //   values.push(...result.data);
-      // } else {
-      //   values.push(result);
-      // }
-      values.push(...expr.getArrayElements(vm));
+      const placements = expr.getArrayElements(vm);
+      values.push(...placements);
     }
     return newArray(vm, values);
   }
@@ -531,7 +532,7 @@ implements Expression {
         strpart = part;
       } else {
         const partV = part.evaluate(vm);
-        strpart = partV.type.stringify(partV);
+        strpart = partV.type.stringify(partV, {vm});
       }
 
       value = new Value(t_String, value.data + strpart);

@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import paths from "node:path";
 import rlsync from "readline-sync";
-import { DatumType, typeToNameMap } from "../data.js";
+import { DatumType, nameToTypeMap, typeToNameMap } from "../data.js";
 import { DashError } from "../error.js";
 import { Expression } from "../expression.js";
 import { NodeKind } from "../node.js";
@@ -56,10 +56,16 @@ export class DashJSVM implements Vm {
     this.imports = new Map();
     this.exports = new Map();
     this.stack = [ ];
+
+    const t_Type = this.platform.getBaseType(DatumType.Type);
+    for (let key of Object.keys(nameToTypeMap)) {
+      this.declare(key, {type: t_Type});
+      this.assign(key, env.getBaseTypeAsValue(nameToTypeMap[key]));
+    }
   }
 
   public declare(identifier: string, header: ValueHeader) {
-    if (this.isDeclared(identifier))
+    if (identifier in this.declarations)
       throw new DashError("already declared " + identifier);
     this.declarations[identifier] = header;
     return this;
@@ -92,7 +98,7 @@ export class DashJSVM implements Vm {
   public defineFn(id: string, func: FunctionValue) {
     this.functions[id] ??= new FunctionOverloads();
     if (func.params) {
-      this.functions[id].set(func.params, func);
+      this.functions[id].add(func);
     }
     return this;
   }
@@ -137,7 +143,6 @@ export class DashJSVM implements Vm {
 
     const content = fs.readFileSync(filepath, "utf-8");
     const chunk = parsing.parse(content);
-    fs.writeFileSync(filepath + ".ast.json", JSON.stringify(chunk, null, 2));
 
     if (chunk.kind === NodeKind.Block) {
       const module = chunk as StatementBlock;
@@ -168,11 +173,6 @@ export class DashJSVM implements Vm {
     }
 
     return filepath;
-  }
-
-  public newDatumValue(type: DatumType, data: any): Value {
-    const vtype = this.platform.getBaseType(type);
-    return new Value(vtype, data);
   }
 
   public getExports(): Record<string, Value> {
@@ -220,38 +220,38 @@ export class DashJSVM implements Vm {
   }
 
   public throwValue(val?: Value): never {
-    throw new DashError(`Throw! ${val}`);
+    throw new DashError(`Throw! ${val ?? ""}`);
   }
 }
 
 export function newVm(env: Platform): Vm {
   const vm = new DashJSVM(env);
 
-  const [ANY, ARRAY, FUNCTION, NUMBER, OBJECT, STRING, TYPE] = [
-    vm.platform.getBaseType(DatumType.Any),
-    vm.platform.getBaseType(DatumType.Array),
-    vm.platform.getBaseType(DatumType.Function),
-    vm.platform.getBaseType(DatumType.Number),
-    vm.platform.getBaseType(DatumType.Object),
-    vm.platform.getBaseType(DatumType.String),
-    vm.platform.getBaseType(DatumType.Type)
-  ];
+  const {
+    [DatumType.Any]: t_Any,
+    [DatumType.Array]: t_Array,
+    [DatumType.Function]: t_Function,
+    [DatumType.Number]: t_Number,
+    [DatumType.Object]: t_Object,
+    [DatumType.String]: t_String,
+    [DatumType.Type]: t_Type
+  } = vm.platform.getBaseTypes();
 
   const USE_JSFN = true;
   const jslink = wrapFunction((args) => {
     if (args.length < 1)
       throw new DashError("expected at least 1 arg")
-    if (! ARRAY.isAssignable(args[0].type))
+    if (! t_Array.isAssignable(args[0].type))
       throw new DashError(`arg 1 expected array, got ${args[0].type.name}`);
-    if (! args[0].data.every(x => STRING.isAssignable(x.type)))
+    if (! args[0].data.every(x => t_String.isAssignable(x.type)))
       throw new DashError(`arg 1 expected array[str]`);
 
-    if (args[1] && ! TYPE.isAssignable(args[1].type))
+    if (args[1] && ! t_Type.isAssignable(args[1].type))
       throw new DashError(`arg 2 expected type, got ${args[1].type.name}`);
 
     const d_keys = args[0].data as Value[];
     const js_value = globalThis[d_keys[0].data][d_keys[1].data];
-    const type: ValueType = args[1]?.data ?? ANY;
+    const type: ValueType = args[1]?.data ?? t_Any;
 
     return wrapFunction((args) => {
       if (! USE_JSFN)
@@ -261,48 +261,50 @@ export function newVm(env: Platform): Vm {
     });
   });
 
-  vm.declare("Array", {type: TYPE});
-  vm.assign("Array", new Value(TYPE, ARRAY));
+  vm.declare("Array", {type: t_Type});
+  vm.assign("Array", new Value(t_Type, t_Array));
 
-  vm.declare("import", {type: FUNCTION});
+  vm.declare("import", {type: t_Function});
   vm.assign("import", wrapFunction((args) => {
     return vm.importModule(args[0].data);
   }));
-  vm.declare("input", {type: FUNCTION});
+  vm.declare("input", {type: t_Function});
   vm.assign("input", wrapFunction((args) => {
     const question = args[0]?.data ?? "";
     const answer = rlsync.question(question);
-    return new Value(STRING, answer);
+    return new Value(t_String, answer);
   }));
-  vm.declare("typeof", {type: FUNCTION});
+  vm.declare("typeof", {type: t_Function});
   vm.assign("typeof", wrapFunction((args) => {
     if (args.length !== 1)
       throw new DashError("expected 1 arg, received " + args.length);
-    return new Value(TYPE, args[0].type);
+    return new Value(t_Type, args[0].type);
   }));
-  vm.declare("write", {type: FUNCTION});
+  vm.declare("write", {type: t_Function});
   vm.assign("write", wrapFunction((args) => {
     if (args.length === 0)
       throw new DashError("must provide an argument to output");
 
     let str = "";
-    for (let arg of args)
-      str += arg.data;
-    process.stdout.write(str);
-    return new Value(STRING, str);
+    for (let arg of args) {
+      const substr = arg.type.stringify(arg, {vm});
+      process.stdout.write(substr);
+      str += substr;
+    }
+    return new Value(t_String, str);
   }));
 
-  vm.declare("jslink", {type: FUNCTION});
+  vm.declare("jslink", {type: t_Function});
   vm.assign("jslink", jslink);
 
-  vm.declare("native", {type: OBJECT});
-  vm.assign("native", new Value(OBJECT, {}, {
+  vm.declare("native", {type: t_Object});
+  vm.assign("native", new Value(t_Object, {}, {
     mod: wrapFunction((args) => {
       if (args.length !== 2)
         throw new DashError(`expected 2 args, received ${args.length}`);
-      if (! args[0].type.extends(NUMBER))
+      if (! args[0].type.extends(t_Number))
         throw new DashError(`cannot get modulo of a ${args[0].type.name}`);
-      if (! args[1].type.extends(NUMBER))
+      if (! args[1].type.extends(t_Number))
         throw new DashError(`arg 2 expected number, got ${args[0].type.name}`);
       const a = args[0].data;
       const b = args[1].data;
