@@ -1,85 +1,66 @@
 @{%
-  function basePrefixToBase(prefix) {
-    switch (prefix[prefix.length - 1]) {
-      case "b": return 2;
-      case "c": return 8;
-      case "x": return 16;
-      default: return undefined;
-    }
+  function postFloat(type: data.DatumType) {
+    return function (d: any) {
+      return ({ type,
+        value: d[0]
+      });
+    };
   }
 
-  function getNumberTokenValue(token) {
-    const value = token.value.substring(2);
-
-    switch (token.value.substring(0, 2)) {
-      case "0b": return Number.parseInt(value, 2);
-      case "0c": return Number.parseInt(value, 8);
-      case "0x": return Number.parseInt(value, 16);
-    }
-    return Number.parseInt(value, 10);
+  function postInt(type: data.DatumType, base: number) {
+    return function (d: any) {
+      return ({ base, type,
+        value: d[0]
+      });
+    };
   }
 %}
 
-@lexer lex
+@lexer lexer
 
-Number ->
-  (Float | Infinity | Integer)
-    {% dn(0, 0) %}
-  # TODO: Unary negation
-  # | %minus Number
-  #   {% (d) => {
-  #     const tok = Object.assign({}, d[1]);
-  #     tok.source.text = "-" + tok.source.text;
-  #     relocateSource(tok.source, d[0]);
-  #     return tok;
-  #   } %}
+NumberLiteral ->
+  (FloatLiteral | IntegerLiteral)
+    {% (d) => new expr.LiteralExpression(d[0][0]) %}
 
-Float ->
-  %float
-    {% (d) => ({
-      "kind": ExpressionKind.Number,
-      "constant": true,
-      "format": "float",
-      "type": Type.Number,
-      "value": Number.parseFloat(d[0].value),
-      source: d[0]
-    }) %}
+FloatLiteral ->
+  float {% postFloat(data.DatumType.Float) %}
 
-Integer ->
-  %base2 {% (d) => ({
-      "kind": ExpressionKind.Number,
-      "constant": true,
-      "format": "base2",
-      "value": getNumberTokenValue(d[0]),
-      source: d[0] }) %}
-  | %base8 {% (d) => ({
-      "kind": ExpressionKind.Number,
-      "constant": true,
-      "format": "base8",
-      "value": getNumberTokenValue(d[0]),
-      source: d[0]
-    }) %}
-  | %base16 {% (d) => ({
-      "kind": ExpressionKind.Number,
-      "constant": true,
-      "format": "base16",
-      "value": getNumberTokenValue(d[0]),
-      source: d[0]
-    }) %}
-  | %base10 {% (d) => ({
-      "kind": ExpressionKind.Number,
-      "constant": true,
-      "format": "base10",
-      "type": Type.Number,
-      "value": Number.parseInt(d[0].value, 10),
-      source: d[0]
-    }) %}
+IntegerLiteral ->
+    binint {% postInt(data.DatumType.Integer, 2) %}
+  | hexint {% postInt(data.DatumType.Integer, 16) %}
+  | octint {% postInt(data.DatumType.Integer, 8) %}
+  | decint {% postInt(data.DatumType.Integer, 10) %}
 
-Infinity ->
-  %infinity
-    {% (d) => ({
-      "kind": ExpressionKind.Number,
-      "constant": true,
-      "value": Number.POSITIVE_INFINITY,
-      source: d[0]
-    }) %}
+float -> floatliteral {% d => Number.parseFloat(`${d[0]}`) %}
+floatliteral -> decliteral "." decliteral {% d => d.join("") %}
+
+# decliteral -> decdigits      {% d => data.parseDecLiteral(d[0]) %}
+# binliteral -> "0b" bindigits {% d => data.parseBinLiteral(d[1]) %}
+# hexliteral -> "0x" hexdigits {% d => data.parseHexLiteral(d[1]) %}
+# octliteral -> "0o" octdigits {% d => data.parseOctLiteral(d[1]) %}
+
+binint -> binliteral {% d => data.parseBinLiteral(d[0]) %}
+decint -> decliteral {% d => data.parseDecLiteral(d[0]) %}
+hexint -> hexliteral {% d => data.parseHexLiteral(d[0]) %}
+octint -> octliteral {% d => data.parseOctLiteral(d[0]) %}
+
+binliteral -> %binliteral {% d => d[0].value %}
+decliteral -> %decliteral {% d => d[0].value %}
+hexliteral -> %hexliteral {% d => d[0].value %}
+octliteral -> %octliteral {% d => d[0].value %}
+
+# bindigits -> bindigit:+ {% d => d[0].join('') %}
+# decdigits -> decdigit:+ {% d => d[0].join('') %}
+# hexdigits -> hexdigit:+ {% d => d[0].join('') %}
+# octdigits -> octdigit:+ {% d => d[0].join('') %}
+
+# TODO: Make these more strict.
+# bindigits -> %alphanum {% d => d[0].value %}
+# decdigits -> %alphanum {% d => d[0].value %}
+# hexdigits -> %alphanum {% d => d[0].value %}
+# octdigits -> %alphanum {% d => d[0].value %}
+
+# bindigit -> %bindigit {% d => d[0].value %}
+# decdigit -> %decdigit {% d => d[0].value %}
+# hexdigit -> %hexdigit {% d => d[0].value %}
+# octdigit -> %octdigit {% d => d[0].value %}

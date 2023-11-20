@@ -1,77 +1,71 @@
-@{%
-  function newBinaryOpToken(kind: ExpressionKind, lhs, rhs) {
-    const token = ({
-      lhs, rhs, kind
-    });
-    if (token.lhs.constant && token.rhs.constant)
-      return doBinaryOpToken(token);
-    return token;
-  }
+@lexer lexer
 
-  function doBinaryOpToken(token): any {
-    let value;
+ExponentialExpr ->
+  Primary _ "**" _ ExponentialExpr
+    {% (d) => new expr.BinaryOpExpression(expr.BinaryOpKind.Exponential, d[0], d[4]) %}
+  | Primary
+    {% id %}
 
-    switch (token.kind) {
-      case ExpressionKind.Concat:
-        value = String(token.lhs.value) + String(token.rhs.value);
-        break;
-      case ExpressionKind.EQ:
-        value = token.lhs.value === token.rhs.value;
-        break;
-      case ExpressionKind.NEQ:
-        value = token.lhs.value !== token.rhs.value;
-        break;
-      case ExpressionKind.GT:
-        value = token.lhs.value > token.rhs.value;
-        break;
-      case ExpressionKind.GEQ:
-        value = token.lhs.value >= token.rhs.value;
-        break;
-      case ExpressionKind.LT:
-        value = token.lhs.value < token.rhs.value;
-        break;
-      case ExpressionKind.LEQ:
-        value = token.lhs.value <= token.rhs.value;
-        break;
+UnaryExpr ->
+  "+" _ UnaryExpr
+    {% nth(2) %}
+  | "-" _ UnaryExpr
+    {% (d) => new expr.UnaryOpExpression(expr.UnaryOpKind.Negate, d[2]) %}
+  | "!" _ UnaryExpr
+    {% (d) => new expr.UnaryOpExpression(expr.UnaryOpKind.Not, d[2]) %}
+  | ExponentialExpr
+    {% id %}
 
-      case ExpressionKind.And:
-        value = token.lhs.value && token.rhs.value;
-        break;
-      case ExpressionKind.Or:
-        value = token.lhs.value || token.rhs.value;
-        break;
-      default:
-        throw new Error("Idk that op " + token.kind)
-    }
+MultiplicativeExpr ->
+  MultiplicativeExpr _ "/" _ UnaryExpr
+    {% (d) => new expr.BinaryOpExpression(expr.BinaryOpKind.Divide, d[0], d[4]) %}
+  | MultiplicativeExpr _ "*" _ UnaryExpr
+    {% (d) => new expr.BinaryOpExpression(expr.BinaryOpKind.Multiply, d[0], d[4]) %}
+  | UnaryExpr
+    {% id %}
 
-    return ({
-      ...token,
-      value
-    });
-  }
-%}
+AdditiveExpr ->
+  AdditiveExpr _ "+" _ MultiplicativeExpr
+    {% (d) => new expr.BinaryOpExpression(expr.BinaryOpKind.Add, d[0], d[4]) %}
+  | AdditiveExpr _ "-" _ MultiplicativeExpr
+    {% (d) => new expr.BinaryOpExpression(expr.BinaryOpKind.Subtract, d[0], d[4]) %}
+  | MultiplicativeExpr
+    {% id %}
 
-@lexer lex
-
-ComparativeExpr ->
-  EqualityOp {% id %}
+ConcatOp ->
+  ConcatOp _ ".." _ AdditiveExpr
+    {% (d) => new expr.BinaryOpExpression(expr.BinaryOpKind.Concat, d[0], d[4]) %}
+  | AdditiveExpr
+    {% id %}
 
 RelationalOp ->
-  RelationalOp _ %gt _ ArithmeticExpr
-    {% (d) => newBinaryOpToken(ExpressionKind.GT, d[0], d[4]) %}
-  | RelationalOp _ %gt %eq _ ArithmeticExpr
-    {% (d) => newBinaryOpToken(ExpressionKind.GEQ, d[0], d[5]) %}
-  | RelationalOp _ %lt _ ArithmeticExpr
-    {% (d) => newBinaryOpToken(ExpressionKind.LT, d[0], d[4]) %}
-  | RelationalOp _ %lt %eq _ ArithmeticExpr
-    {% (d) => newBinaryOpToken(ExpressionKind.LEQ, d[0], d[5]) %}
-  | ArithmeticExpr
+  RelationalOp _ ">" _ ConcatOp
+    {% (d) => new expr.BinaryOpExpression(expr.BinaryOpKind.GT, d[0], d[4]) %}
+  | RelationalOp _ ">=" _ ConcatOp
+    {% (d) => new expr.BinaryOpExpression(expr.BinaryOpKind.GEQ, d[0], d[4]) %}
+  | RelationalOp _ "<" _ ConcatOp
+    {% (d) => new expr.BinaryOpExpression(expr.BinaryOpKind.LT, d[0], d[4]) %}
+  | RelationalOp _ "<=" _ ConcatOp
+    {% (d) => new expr.BinaryOpExpression(expr.BinaryOpKind.LEQ, d[0], d[4]) %}
+  | ConcatOp
     {% id %}
 
 EqualityOp ->
-  EqualityOp _ %eq %eq _ RelationalOp
-    {% (d) => newBinaryOpToken(ExpressionKind.EQ, d[0], d[5]) %}
-  | EqualityOp _ %neq _ RelationalOp
-    {% (d) => newBinaryOpToken(ExpressionKind.NEQ, d[0], d[4]) %}
+  EqualityOp _ "==" _ RelationalOp
+    {% (d) => new expr.BinaryOpExpression(expr.BinaryOpKind.EQ, d[0], d[4]) %}
+  | EqualityOp _ "!=" _ RelationalOp
+    {% (d) => new expr.BinaryOpExpression(expr.BinaryOpKind.NEQ, d[0], d[4]) %}
   | RelationalOp
+    {% id %}
+
+LogicalAndExpr ->
+  LogicalAndExpr _ "&&" _ EqualityOp
+    {% (d) => new expr.BinaryOpExpression(expr.BinaryOpKind.And, d[0], d[4]) %}
+  | EqualityOp
+    {% id %}
+
+LogicalOrExpr ->
+  LogicalOrExpr _ "||" _ LogicalAndExpr
+    {% (d) => new expr.BinaryOpExpression(expr.BinaryOpKind.Or, d[0], d[4]) %}
+  | LogicalAndExpr
     {% id %}

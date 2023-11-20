@@ -1,51 +1,50 @@
+@include "./function.ne"
+@lexer lexer
 
-@lexer lex
+StaticDeclarationStmt ->
+  (Annotations _):? Name _ "::" _ ReturnExpr
+    {% (d) => new stmt.DeclarationStatement(d[1], d[5], {
+      "annotations": d[0]?.[0],
+      "type": undefined,
+      "constant": true
+    }) %}
+  | FunctionDecl
+    {% id %}
 
-AssignmentTarget ->
-  (DerefExpr | Identifier)
-    {% dn(0, 0) %}
+DeclarationStmt ->
+  (Annotations _):? Name _ TypeSignature _ "=" _ ReturnExpr
+    {% (d) => new stmt.DeclarationStatement(d[1], d[7], {
+      "annotations": d[0]?.[0],
+      "type": d[3],
+      "constant": false
+    }) %}
+  | (Annotations _):? Name _ ":=" _ ReturnExpr
+    {% (d) => new stmt.DeclarationStatement(d[1], d[5], {
+      "annotations": d[0]?.[0],
+      "type": undefined,
+      "constant": false
+    }) %}
+  | StaticDeclarationStmt
+    {% id %}
 
-# AssignExpr ->
-#   AssignmentTarget _ %equals _ Expr
-#     {% (d) => ({
-#       "kind": ExpressionKind.Assignment,
-#       "lhs": d[0],
-#       "rhs": d[4]
-#     }) %}
+CompoundAssignmentStmt ->
+    Ref _ "**=" _ Expr
+    {% d => new stmt.CompoundAssignmentStatement(d[0], d[4], expr.BinaryOpKind.Exponential) %}
+  | Ref _ "/=" _ Expr
+    {% d => new stmt.CompoundAssignmentStatement(d[0], d[4], expr.BinaryOpKind.Divide) %}
+  | Ref _ "*=" _ Expr
+    {% d => new stmt.CompoundAssignmentStatement(d[0], d[4], expr.BinaryOpKind.Multiply) %}
+  | Ref _ "+=" _ Expr
+    {% d => new stmt.CompoundAssignmentStatement(d[0], d[4], expr.BinaryOpKind.Add) %}
+  | Ref _ "-=" _ Expr
+    {% d => new stmt.CompoundAssignmentStatement(d[0], d[4], expr.BinaryOpKind.Subtract) %}
+  | Ref _ "..=" _ Expr
+    {% d => new stmt.CompoundAssignmentStatement(d[0], d[4], expr.BinaryOpKind.Concat) %}
 
-# DeclareExpr ->
-#   AssignmentTarget _ %colon %colon:? (_ TypeName _):? %equals _ Expr {% (d) => {
-#     const token = ({
-#       "kind": ExpressionKind.Assignment,
-#       "lhs": d[0],
-#       "rhs": d[7],
-#       "declaration": true,
-#       "type": d[4]?.[1]
-#     });
-
-#     token["constant"] = !!d[3];
-
-#     return token;
-#   } %}
-
-AssignExpr ->
-  AssignmentTarget _ (%colon %colon:? (_ TypeName _):?):? %eq _ Expr {% (d) => {
-    const token: any = ({
-      "kind": ExpressionKind.Assignment,
-      "lhs": d[0],
-      "rhs": d[5],
-      "type": d[4]?.[1]
-    });
-
-    if (d[2]) {
-      token["constant"] = !! (d[2][1]);
-      token["declaration"] = ({
-        type: d[2][2]?.[1]
-      });
-    }
-
-    return token;
-  } %}
-
-TypeName ->
-  ("string" | "number") {% (d) => getTypeByName(d[0][0].value) %}
+AssignmentStmt ->
+  Ref _ "=" _ Expr
+    {% (d) => new stmt.AssignmentStatement(d[0], d[4]) %}
+  | CompoundAssignmentStmt
+    {% id %}
+  | DeclarationStmt
+    {% id %}

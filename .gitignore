@@ -1,6 +1,6 @@
-build/
-docs/
-node_modules/
-src/grammar/**/*.ts
-ast.json
-script.dash
+/build/
+/docs/
+/node_modules/
+/src/grammar/**/*.ts
+/ast.json
+/*.dash

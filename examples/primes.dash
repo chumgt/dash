@@ -1,0 +1,20 @@
+iter :: import("dash:iter")
+
+fn sieve(n: i64) {
+  multiples := [ ]
+  primes := [ ]
+
+  for i in 2..(n+1) {
+    if !multiples.has(i) {
+      primes = primes.add(i)
+      for j in iter.range(i**2, n + 1, i) {
+        multiples = [multiples.add(j)]
+      }
+    }
+  }
+
+  return primes
+}
+
+for i in sieve(120)
+  write(i, " ");

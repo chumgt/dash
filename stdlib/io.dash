@@ -1,4 +1,5 @@
+__write ::= write;
 
-write ::= __native__(("./../stdlib/builtin"), ("write"));
-
-0
+export write ::= __write;
+export fn writeln() => writeln("");
+export fn writeln(msg: str) => write(msg, "\n");

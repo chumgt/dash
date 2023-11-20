@@ -1,47 +1,46 @@
+@lexer lexer
 
-@lexer lex
-
-CallExpr ->
-  CallTarget _ %lparen _ ArgList:? _ %rparen
-    {% (d) => ({
-      "kind": ExpressionKind.Call,
-      "lhs": d[0],
-      "args": d[4] ?? []
+FunctionLiteral ->
+  ("fn" | "⨍") _ "(" _ Parameters:? _ ")" _ TypeSignature:? _ FunctionBlock
+    {% (d) => new expr.FunctionExpression(d[4]??[], d[10], {
+      "returnType": d[8]
+    }) %}
+  | "⨍" LambdaParameter TypeSignature:? _ FunctionBlock
+    {% (d) => new expr.FunctionExpression([d[1]], d[4], {
+      "returnType": d[2]
     }) %}
 
-CallTarget ->
-  ValueExpr {%id%}
-
-Function ->
-  %lparen _ ParamList:? _ %rparen (_ %colon _ TypeName):? _ %lbrace FunctionBody %rbrace
-    {% (d) => ({
-      "kind": ExpressionKind.Function,
-      "type": Type.Function,
-      "params": d[2] ?? [],
-      "returnType": d[5]?.[3] ?? Type.Any,
-      "body": d[8]
+FunctionDecl ->
+  (Annotations _):? "fn" __ Name _ "(" _ Parameters:? _ ")" (_ TypeSignature):? _ FunctionBlock
+    {% (d) => new stmt.FunctionDeclaration(d[3], d[7]??[], d[12], {
+      "annotations": d[0]?.[0],
+      "returnType": d[10]?.[1]
     }) %}
 
-FunctionBody ->
-  _ Expr _
-    {% (d) => [d[1]] %}
-  | FunctionBody _ %semi _ Expr _
-      {% (d) => [...d[0], d[4]] %}
-
-Arg ->
-  ValueExpr
+FunctionBlock ->
+  "=>" _ ReturnExpr
+    {% (d) => new expr.BlockExpression(
+        new stmt.StatementBlock([]), d[2]) %}
+  | ExprBlock
     {% id %}
 
-ArgList ->
-  Arg {% (d) => ([d[0]]) %}
-  | ArgList _ %comma _ Arg {% (d) => [...d[0], d[4]] %}
+Arguments ->
+    Arguments _ "," _ Argument {% (d) => [...d[0], d[4]] %}
+  | Argument  {% (d) => [d[0]] %}
+Argument ->
+  ReturnExpr
+    {% id %}
 
-ParamList ->
-  Param  {% (d) => [d[0]] %}
-  | ParamList _ %comma _ Param  {% (d) => [...d[0], d[4]] %}
+LambdaParameter ->
+  Name {% (d) => ({ name: d[0] }) %}
 
-Param ->
-  Identifier (_ %colon _ TypeName):? {% (d) => ({
-    "name": d[0].value,
-    "type": d[1] ? getTypeByName(d[1][3]) : Type.Any
-  }) %}
+Parameters ->
+    Parameters _ "," _ Parameter {% (d) => [...d[0], d[4]] %}
+  | Parameter  {% (d) => [d[0]] %}
+Parameter ->
+  Name _ TypeSignature:? (_ "=" _ Expr):?
+    {% (d) => tokenize<tokens.ParameterToken>({
+      "name": d[0],
+      "defaultValue": d[3]?.[3],
+      "type": d[2]
+    }) %}
