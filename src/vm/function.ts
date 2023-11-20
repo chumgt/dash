@@ -28,6 +28,7 @@ export class FunctionOverloads {
       if (! match.params) {
         if (! nearest) {
           nearest = match;
+          nearestDistance = 0;
         }
         continue;
       }

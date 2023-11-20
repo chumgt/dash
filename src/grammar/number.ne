@@ -23,7 +23,7 @@ NumberLiteral ->
     {% (d) => new expr.LiteralExpression(d[0][0]) %}
 
 FloatLiteral ->
-  float {% d => postFloat(data.DatumType.Float) %}
+  float {% postFloat(data.DatumType.Float) %}
 
 IntegerLiteral ->
     binint {% postInt(data.DatumType.Integer, 2) %}
@@ -31,7 +31,7 @@ IntegerLiteral ->
   | octint {% postInt(data.DatumType.Integer, 8) %}
   | decint {% postInt(data.DatumType.Integer, 10) %}
 
-float -> floatliteral {% d => Number.parseFloat(`${d[0]}.${d[2]}`) %}
+float -> floatliteral {% d => Number.parseFloat(`${d[0]}`) %}
 floatliteral -> decliteral "." decliteral {% d => d.join("") %}
 
 # decliteral -> decdigits      {% d => data.parseDecLiteral(d[0]) %}

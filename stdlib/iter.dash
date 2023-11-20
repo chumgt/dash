@@ -7,18 +7,23 @@ export fn expand(iter: obj) {
   values
 }
 
+export fn range(start:i64, stop:i64) =>
+  range(start, stop, math.sign(stop - start))
+
 export fn range(start:i64, stop:i64, step:i64) {
   if step == 0 
     throw "step cannot be 0";
-  if !math.is_finite(step as f64)
+  if ! math.is_finite(step)
     throw "step must be finite";
     
-  stepSign :: math.sign(step as f64);
+  stepSign :: math.sign(step);
   i := start;
 
   return #{
+    range :: stop - start;
+    steps :: (stop - start) / step;
     done :: fn() =>
-      stepSign != math.sign((stop - i) as f64);
+      false if i == stop else stepSign != math.sign(stop - i);
     next :: fn() {
       j :: i;
       i = i + step;

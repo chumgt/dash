@@ -454,11 +454,6 @@ implements Expression, Literal {
   public evaluate(vm: Vm): Value {
     const t_t = vm.platform.getBaseType(this.token.type);
     return new Value(t_t, this.token.value);
-    // if (this.token.value) {
-    //   return new Value(t_t, this.token.value);
-    // } else {
-    //   return t_t.from(this.token.text);
-    // }
   }
 }
 

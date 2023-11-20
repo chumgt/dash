@@ -40,7 +40,7 @@
     binliteral: /0b[01]+/,
     hexliteral: /0x[a-fA-F0-9]+/,
     octliteral: /0o[0-7]+/,
-    decliteral: /0|[1-9][0-9]*/,
+    decliteral: /[0-9][0-9]*/,
     strescape: /\\|\{|u[0-9]{4}/,
 
     decl: ["::", ":="],

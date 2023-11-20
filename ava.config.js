@@ -3,7 +3,7 @@ module.exports = {
     "TS_NODE_PROJECT": "./test/tsconfig.json"
   },
   "extensions": [
-    "ts"
+    "js", "ts"
   ],
   "files": [
     "./test/**/*.spec.ts"

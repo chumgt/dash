@@ -2,7 +2,7 @@ import { DatumType } from "../data.js";
 import { DashError } from "../error.js";
 import { BinaryOpKind, UnaryOpKind } from "../expression.js";
 import { ValueType } from "../type.js";
-import { FunctionValue, NativeFunctionContext, Value, newArray, newArrayIterator, newRangeIter, wrap, wrapFunction } from "./value.js";
+import { FunctionValue, NativeFunctionContext, NativeFunctionValue, Value, newArray, newArrayIterator, newRangeIter, wrap, wrapFunction } from "./value.js";
 
 export type Builtins = Readonly<{
   types: Record<DatumType, any>;
@@ -137,7 +137,7 @@ export const FUNCTION = new ValueType(TYPE, {name: "func"});
 FUNCTION.wrap = function (value) {
   if (typeof value !== "function")
     throw new DashError(`expected function, received ${typeof value}`);
-  return wrap(value);
+  return new NativeFunctionValue(value, undefined);
 };
 FUNCTION.isIterable = (value) => true;
 FUNCTION.getIterator = (ctx, value) => {

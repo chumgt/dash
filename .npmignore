@@ -1,0 +1,13 @@
+/.vscode/
+/docs/
+/examples/
+/src/
+/test/
+/.editorconfig
+/ava.config.js
+/gulpfile.js
+/*.dash
+/ast.json
+/script.mjs
+/tsconfig.json
+/tsconfig.*.json

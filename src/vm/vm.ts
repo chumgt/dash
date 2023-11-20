@@ -6,7 +6,7 @@ import { DashError } from "../error.js";
 import { Expression } from "../expression.js";
 import { NodeKind } from "../node.js";
 import { Type, ValueType } from "../type.js";
-import { FunctionValue, Value, newArray, wrap, wrapFunction } from "./value.js";
+import { FunctionValue, NativeFunctionValue, Value, newArray, wrap, wrapFunction } from "./value.js";
 import { FunctionOverloads } from "./function.js";
 import * as parsing from "../parse.js";
 import { StatementBlock } from "../statement.js";
@@ -253,12 +253,17 @@ export function newVm(env: Platform): Vm {
     const js_value = globalThis[d_keys[0].data][d_keys[1].data];
     const type: ValueType = args[1]?.data ?? t_Any;
 
-    return wrapFunction((args) => {
+    // return wrapFunction((args) => {
+    //   if (! USE_JSFN)
+    //     return args[0];
+
+    //   return wrap(js_value, type);
+    // });
+    return new NativeFunctionValue((args) => {
       if (! USE_JSFN)
         return args[0];
-
       return wrap(js_value, type);
-    });
+    }, undefined);
   });
 
   vm.declare("Array", {type: t_Type});
